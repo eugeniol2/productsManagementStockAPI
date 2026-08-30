@@ -35,10 +35,6 @@ app.disable("x-powered-by");
 app.use(logRequest);
 app.use(express.json({ limit: MAX_BODY_SIZE }));
 
-app.get("/", (req: Request, res: Response) => {
-  res.send("Hello World!");
-});
-
 app.get("/categories", async (req: Request, res: Response) => {
   res.json(await listCategories(prisma));
 });
