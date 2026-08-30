@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+
+    // O par que conserta o `node:http`: resolve módulos do mesmo jeito que o Node resolve.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+
+    // Força a inclusão do @types/node em vez de depender da descoberta automática.
+    "types": ["node"],
+
+    // O Node 24 executa .ts direto, apagando os tipos. O tsc aqui só confere, nunca compila.
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+
+    // Proíbe sintaxe que o Node não consegue apagar (enum, namespace, parameter properties).
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "prisma.config.ts", "prisma/seed.ts"]
+}

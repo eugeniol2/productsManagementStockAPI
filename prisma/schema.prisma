@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Category {
+  id             Int     @id @default(autoincrement())
+  name           String  @unique
+  requiresExpiry Boolean @map("requires_expiry")
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id           Int      @id @default(autoincrement())
+  internalCode String   @unique @map("internal_code")
+  name         String
+  categoryId   Int      @map("category_id")
+  unitsPerPack Int      @map("units_per_pack")
+  salePrice    Decimal  @map("sale_price") @db.Decimal(10, 2)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  category  Category   @relation(fields: [categoryId], references: [id])
+  barcodes  Barcode[]
+  batches   Batch[]
+  saleItems SaleItem[]
+
+  @@index([categoryId])
+  @@map("products")
+}
+
+model Sale {
+  id             Int      @id @default(autoincrement())
+  idempotencyKey String?  @unique @map("idempotency_key")
+  occurredAt     DateTime @default(now()) @map("occurred_at")
+
+  items     SaleItem[]
+  movements Movement[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id        Int     @id @default(autoincrement())
+  saleId    Int     @map("sale_id")
+  productId Int     @map("product_id")
+  quantity  Int
+  shortfall Int     @default(0)
+  unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+model Barcode {
+  id           Int    @id @default(autoincrement())
+  productId    Int    @map("product_id")
+  code         String @unique
+  unitsPerScan Int    @map("units_per_scan")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_barcodes")
+}
+
+model Batch {
+  id            Int       @id @default(autoincrement())
+  productId     Int       @map("product_id")
+  expiresAt     DateTime? @map("expires_at") @db.Date
+  receivedUnits Int       @map("received_units")
+  currentUnits  Int       @map("current_units")
+  totalCost     Decimal   @map("total_cost") @db.Decimal(10, 2)
+  receivedAt    DateTime  @default(now()) @map("received_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  product   Product    @relation(fields: [productId], references: [id])
+  movements Movement[]
+
+  @@index([productId, expiresAt])
+  @@map("batches")
+}
+
+enum MovementType {
+  ENTRY
+  SALE
+  ADJUSTMENT
+  LOSS
+}
+
+model Movement {
+  id         Int          @id @default(autoincrement())
+  batchId    Int          @map("batch_id")
+  saleId     Int?         @map("sale_id")
+  type       MovementType
+  quantity   Int
+  occurredAt DateTime     @default(now()) @map("occurred_at")
+
+  batch Batch @relation(fields: [batchId], references: [id])
+  sale  Sale? @relation(fields: [saleId], references: [id])
+
+  @@index([batchId])
+  @@index([saleId])
+  @@map("movements")
+}

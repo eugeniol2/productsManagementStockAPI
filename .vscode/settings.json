@@ -1,0 +1,9 @@
+{
+  // Usa o TypeScript do projeto (node_modules), não o que vem embutido no VS Code.
+  // Garante que editor e terminal enxerguem exatamente a mesma versão e as mesmas regras.
+  "typescript.tsdk": "node_modules/typescript/lib",
+
+  // Por segurança, o VS Code ignora o tsdk vindo do workspace até você aceitar.
+  // Isso faz ele perguntar em vez de silenciosamente usar a versão embutida.
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}

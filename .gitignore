@@ -1,0 +1,38 @@
+# Dependências — reconstruídas com `npm ci` a partir do package-lock.json
+node_modules/
+
+# Segredos. NUNCA versionar: string de conexão do Postgres, senha, JWT secret.
+.env
+.env.*
+!.env.example
+
+# Saída de build. Hoje não geramos nada (noEmit), mas fica pronto pro dia que gerar.
+dist/
+build/
+*.tsbuildinfo
+
+# Testes
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dados do Postgres, se o docker-compose usar bind mount em vez de volume nomeado
+postgres-data/
+pgdata/
+
+# Editor — versionamos settings.json de propósito: ele carrega a config do TypeScript
+# que todo mundo no projeto precisa. O resto (histórico local, tasks pessoais) não.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Lixo de sistema operacional. desktop.ini aparece por a pasta estar no OneDrive.
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ATENÇÃO, quando o Prisma entrar:
+#   prisma/migrations/  → SEMPRE versionar. É o histórico do schema do banco.
+#   node_modules/.prisma → já coberto pelo node_modules acima.
