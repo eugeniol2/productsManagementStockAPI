@@ -12,6 +12,7 @@ export const INVALID_PRODUCT_ID = {
   body: { error: "INVALID_PRODUCT_ID" },
 };
 export const INVALID_CODE = { status: 400, body: { error: "INVALID_CODE" } };
+export const INVALID_PRICE = { status: 400, body: { error: "INVALID_PRICE" } };
 export const INVALID_JSON = { status: 400, body: { error: "INVALID_JSON" } };
 export const PRODUCT_NOT_FOUND = {
   status: 404,

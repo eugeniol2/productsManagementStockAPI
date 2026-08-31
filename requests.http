@@ -76,6 +76,48 @@ GET {{host}}/products/code/0000000000000
 ### sem código: vira /products/code e casa /products/:id -> 400
 GET {{host}}/products/code/
 
+# --- PUT /products/:id/price ------------------------------------------------
+# Muda o preço de venda por unidade. Afeta só vendas futuras: a venda já
+# registrada mantém o unitPrice congelado no momento em que ocorreu.
+# salePrice é string, respeita o Decimal(10,2) da coluna: até 8 dígitos e 2 casas.
+
+### troca a etiqueta da Coca-Cola para 6.50 -> 200 com o produto atualizado
+PUT {{host}}/products/11/price
+Content-Type: application/json
+
+{ "salePrice": "6.90" }
+
+### preço negativo -> 400 INVALID_PRICE
+PUT {{host}}/products/11/price
+Content-Type: application/json
+
+{ "salePrice": "-5.00" }
+
+### mais de duas casas decimais -> 400
+PUT {{host}}/products/11/price
+Content-Type: application/json
+
+{ "salePrice": "6.999" }
+
+### acima do Decimal(10,2) -> 400, não 500: validado na fronteira
+PUT {{host}}/products/11/price
+Content-Type: application/json
+
+{ "salePrice": "999999999.00" }
+
+### campo extra é recusado -> 400. Ninguém desativa um produto disfarçando
+### de edição de preço; o strictObject barra o active.
+PUT {{host}}/products/11/price
+Content-Type: application/json
+
+{ "salePrice": "6.50", "active": false }
+
+### produto inexistente -> 404 PRODUCT_NOT_FOUND
+PUT {{host}}/products/999999/price
+Content-Type: application/json
+
+{ "salePrice": "6.50" }
+
 # --- POST /sales ------------------------------------------------------------
 # idempotencyKey é obrigatória e precisa ser UUID. As chaves abaixo são fixas,
 # então a segunda execução devolve 200 replayed em vez de gravar de novo.

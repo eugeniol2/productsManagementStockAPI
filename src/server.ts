@@ -3,6 +3,7 @@ import express, { type Request, type Response } from "express";
 import { prisma } from "./database/prisma.ts";
 import {
   INVALID_CODE,
+  INVALID_PRICE,
   INVALID_PRODUCT_ID,
   INVALID_QUERY,
   INVALID_SALE,
@@ -25,7 +26,11 @@ import {
   findProductById,
   listProducts,
 } from "./stock/products/products.queries.ts";
-import { productQuerySchema } from "./stock/products/products.schema.ts";
+import {
+  priceSchema,
+  productQuerySchema,
+} from "./stock/products/products.schema.ts";
+import { updateProductPrice } from "./stock/products/products.service.ts";
 import { saleSchema } from "./stock/sales/sales.schema.ts";
 import { ProductNotFound, registerSale } from "./stock/sales/sales.service.ts";
 
@@ -79,6 +84,33 @@ app.get(
     }
 
     const product = await findProductById(prisma, id);
+
+    if (!product) {
+      fail(res, PRODUCT_NOT_FOUND);
+      return;
+    }
+    res.json(product);
+  },
+);
+
+app.put(
+  "/products/:id/price",
+  async (req: Request<{ id: string }>, res: Response) => {
+    const id = parseId(req.params.id);
+
+    if (id === null) {
+      fail(res, INVALID_PRODUCT_ID);
+      return;
+    }
+
+    const body = priceSchema.safeParse(req.body);
+
+    if (!body.success) {
+      rejectInvalid(req, res, INVALID_PRICE, body.error);
+      return;
+    }
+
+    const product = await updateProductPrice(prisma, id, body.data.salePrice);
 
     if (!product) {
       fail(res, PRODUCT_NOT_FOUND);
