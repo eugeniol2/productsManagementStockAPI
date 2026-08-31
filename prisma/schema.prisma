@@ -63,6 +63,19 @@ model SaleItem {
   @@map("sale_items")
 }
 
+model StockEntry {
+  id             Int       @id @default(autoincrement())
+  idempotencyKey String    @unique @map("idempotency_key")
+  supplier       String?
+  invoiceNumber  String?   @map("invoice_number")
+  purchasedAt    DateTime? @map("purchased_at") @db.Date
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  batches Batch[]
+
+  @@map("stock_entries")
+}
+
 model Barcode {
   id           Int    @id @default(autoincrement())
   productId    Int    @map("product_id")
@@ -78,6 +91,7 @@ model Barcode {
 model Batch {
   id            Int       @id @default(autoincrement())
   productId     Int       @map("product_id")
+  stockEntryId  Int?      @map("stock_entry_id")
   expiresAt     DateTime? @map("expires_at") @db.Date
   receivedUnits Int       @map("received_units")
   currentUnits  Int       @map("current_units")
@@ -85,10 +99,12 @@ model Batch {
   receivedAt    DateTime  @default(now()) @map("received_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  product   Product    @relation(fields: [productId], references: [id])
-  movements Movement[]
+  product    Product     @relation(fields: [productId], references: [id])
+  stockEntry StockEntry? @relation(fields: [stockEntryId], references: [id])
+  movements  Movement[]
 
   @@index([productId, expiresAt])
+  @@index([stockEntryId])
   @@map("batches")
 }
 

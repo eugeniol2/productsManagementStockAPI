@@ -3,12 +3,12 @@ import express, { type Request, type Response } from "express";
 import { prisma } from "./database/prisma.ts";
 import {
   EXPIRY_REQUIRED,
-  INVALID_BATCH,
   INVALID_CODE,
   INVALID_PRICE,
   INVALID_PRODUCT_ID,
   INVALID_QUERY,
   INVALID_SALE,
+  INVALID_STOCK_ENTRY,
   NOT_FOUND,
   PRODUCT_NOT_FOUND,
   fail,
@@ -33,8 +33,8 @@ import {
   productQuerySchema,
 } from "./stock/products/products.schema.ts";
 import { updateProductPrice } from "./stock/products/products.service.ts";
-import { batchSchema } from "./stock/batches/batches.schema.ts";
-import { registerBatch } from "./stock/batches/batches.service.ts";
+import { stockEntrySchema } from "./stock/stockEntries/stockEntries.schema.ts";
+import { registerStockEntry } from "./stock/stockEntries/stockEntries.service.ts";
 import { saleSchema } from "./stock/sales/sales.schema.ts";
 import { ProductNotFound, registerSale } from "./stock/sales/sales.service.ts";
 
@@ -124,32 +124,24 @@ app.put(
   },
 );
 
-app.post(
-  "/products/:id/batches",
-  async (req: Request<{ id: string }>, res: Response) => {
-    const id = parseId(req.params.id);
+app.post("/stock-entries", async (req: Request, res: Response) => {
+  const body = stockEntrySchema.safeParse(req.body);
 
-    if (id === null) {
-      fail(res, INVALID_PRODUCT_ID);
-      return;
-    }
+  if (!body.success) {
+    rejectInvalid(req, res, INVALID_STOCK_ENTRY, body.error);
+    return;
+  }
 
-    const body = batchSchema.safeParse(req.body);
+  const result = await registerStockEntry(prisma, body.data);
 
-    if (!body.success) {
-      rejectInvalid(req, res, INVALID_BATCH, body.error);
-      return;
-    }
-
-    const result = await registerBatch(prisma, id, body.data);
-
-    if (!result.ok) {
-      fail(res, result.reason === "PRODUCT_NOT_FOUND" ? PRODUCT_NOT_FOUND : EXPIRY_REQUIRED);
-      return;
-    }
-    res.status(201).json(result.batch);
-  },
-);
+  if (!result.ok) {
+    fail(res, result.reason === "PRODUCT_NOT_FOUND" ? PRODUCT_NOT_FOUND : EXPIRY_REQUIRED);
+    return;
+  }
+  res
+    .status(result.replayed ? 200 : 201)
+    .json({ ...result.entry, replayed: result.replayed });
+});
 
 app.post("/sales", async (req: Request, res: Response) => {
   const sale = saleSchema.safeParse(req.body);

@@ -178,82 +178,129 @@ Content-Type: application/json
 { "salePrice": "6.50" }
 
 # ============================================================================
-# POST /products/:id/batches   (entrada de mercadoria)
-# Cria um fardo e lança a ENTRADA no livro-razão, numa transação.
-# packs × unitsPerPack = unidades recebidas. unitsPerPack é opcional: sem ele,
-# usa o padrão do produto. totalCost é o total pago, string Decimal(10,2) > 0.
-# A validade é obrigatória se a categoria do produto exigir.
+# POST /stock-entries   (entrada de mercadoria: uma nota com vários fardos)
+# Cria a nota e seus fardos, com um lançamento ENTRY por fardo, numa transação
+# só — se um item falha, nada entra. O cabeçalho (supplier, invoiceNumber,
+# purchasedAt) é opcional. Cada item: packs × unitsPerPack = unidades; sem
+# unitsPerPack usa o padrão do produto; totalCost é string Decimal(10,2) > 0;
+# a validade é obrigatória se a categoria do produto exigir.
+# idempotencyKey é obrigatória e única: reenvio da mesma nota devolve 200.
 # ============================================================================
 
-### entrada de 2 fardos de Coca (categoria Bebidas exige validade)
-# esperado: 201 com o fardo criado; currentUnits = 2 × 12 = 24
-POST {{host}}/products/11/batches
+### nota completa: cabeçalho + dois fardos (Coca com validade, Detergente sem)
+# esperado: 201 com a nota e os dois fardos; 24 e 120 unidades
+POST {{host}}/stock-entries
 Content-Type: application/json
 
-{ "packs": 2, "expiresAt": "2026-12-31", "totalCost": "200.00" }
+{
+  "idempotencyKey": "aaaa0001-0001-4001-8001-000000000001",
+  "supplier": "Distribuidora Sul",
+  "invoiceNumber": "NF-12345",
+  "purchasedAt": "2026-08-30",
+  "items": [
+    { "productId": 11, "packs": 2, "expiresAt": "2026-12-31", "totalCost": "200.00" },
+    { "productId": 36, "packs": 5, "totalCost": "90.00" }
+  ]
+}
 
-### entrada com unitsPerPack sobrescrito (fornecedor mudou de 12 para 6)
-# esperado: 201; currentUnits = 2 × 6 = 12, valendo só para este fardo
-POST {{host}}/products/11/batches
+### nota mínima: sem cabeçalho, um fardo, unitsPerPack do produto
+# esperado: 201; supplier e purchasedAt vêm null
+POST {{host}}/stock-entries
 Content-Type: application/json
 
-{ "packs": 2, "unitsPerPack": 6, "expiresAt": "2026-12-31", "totalCost": "50.00" }
+{
+  "idempotencyKey": "aaaa0002-0002-4002-8002-000000000002",
+  "items": [
+    { "productId": 36, "packs": 1, "totalCost": "18.00" }
+  ]
+}
 
-### entrada de Detergente (categoria Limpeza não exige validade)
-# esperado: 201 sem expiresAt; currentUnits = 5 × 24 = 120 pelo padrão do produto
-POST {{host}}/products/36/batches
+### reenvio da mesma nota (rode a primeira duas vezes)
+# esperado: 1ª vez 201 replayed:false; 2ª vez 200 replayed:true, sem duplicar
+
+### validade faltando num item cujo produto exige (Leite)
+# esperado: 400 EXPIRY_REQUIRED; a nota inteira é recusada, nada entra
+POST {{host}}/stock-entries
 Content-Type: application/json
 
-{ "packs": 5, "totalCost": "90.00" }
+{
+  "idempotencyKey": "aaaa0003-0003-4003-8003-000000000003",
+  "items": [
+    { "productId": 11, "packs": 1, "expiresAt": "2026-12-31", "totalCost": "10.00" },
+    { "productId": 17, "packs": 1, "totalCost": "10.00" }
+  ]
+}
 
-### validade faltando num produto que exige (Leite, categoria Laticínios)
-# esperado: 400 EXPIRY_REQUIRED
-POST {{host}}/products/17/batches
+### um item aponta para produto inexistente
+# esperado: 404 PRODUCT_NOT_FOUND; a nota inteira é recusada
+POST {{host}}/stock-entries
 Content-Type: application/json
 
-{ "packs": 3, "totalCost": "150.00" }
+{
+  "idempotencyKey": "aaaa0004-0004-4004-8004-000000000004",
+  "items": [
+    { "productId": 999999, "packs": 1, "expiresAt": "2026-12-31", "totalCost": "10.00" }
+  ]
+}
 
-### validade no passado
-# esperado: 400 INVALID_BATCH com a mensagem "must not be in the past"
-POST {{host}}/products/11/batches
+### sem idempotencyKey
+# esperado: 400 INVALID_STOCK_ENTRY no campo idempotencyKey
+POST {{host}}/stock-entries
 Content-Type: application/json
 
-{ "packs": 1, "expiresAt": "2020-01-01", "totalCost": "10.00" }
+{
+  "items": [
+    { "productId": 36, "packs": 1, "totalCost": "10.00" }
+  ]
+}
 
-### packs zero
-# esperado: 400 INVALID_BATCH; a entrada precisa de pelo menos um fardo
-POST {{host}}/products/11/batches
+### lista de itens vazia
+# esperado: 400 INVALID_STOCK_ENTRY no campo items
+POST {{host}}/stock-entries
 Content-Type: application/json
 
-{ "packs": 0, "expiresAt": "2026-12-31", "totalCost": "10.00" }
+{
+  "idempotencyKey": "aaaa0005-0005-4005-8005-000000000005",
+  "items": []
+}
 
-### custo negativo
-# esperado: 400 INVALID_BATCH
-POST {{host}}/products/11/batches
+### validade de um item no passado
+# esperado: 400 INVALID_STOCK_ENTRY com "must not be in the past"
+POST {{host}}/stock-entries
 Content-Type: application/json
 
-{ "packs": 2, "expiresAt": "2026-12-31", "totalCost": "-5.00" }
+{
+  "idempotencyKey": "aaaa0006-0006-4006-8006-000000000006",
+  "items": [
+    { "productId": 11, "packs": 1, "expiresAt": "2020-01-01", "totalCost": "10.00" }
+  ]
+}
+
+### data de compra no futuro
+# esperado: 400 INVALID_STOCK_ENTRY com "must not be in the future"
+POST {{host}}/stock-entries
+Content-Type: application/json
+
+{
+  "idempotencyKey": "aaaa0007-0007-4007-8007-000000000007",
+  "purchasedAt": "2099-01-01",
+  "items": [
+    { "productId": 36, "packs": 1, "totalCost": "10.00" }
+  ]
+}
 
 ### campo extra no corpo
-# esperado: 400 INVALID_BATCH; o strictObject barra qualquer campo não declarado
-POST {{host}}/products/11/batches
+# esperado: 400 INVALID_STOCK_ENTRY; o strictObject barra o que não foi declarado
+POST {{host}}/stock-entries
 Content-Type: application/json
 
-{ "packs": 2, "expiresAt": "2026-12-31", "totalCost": "10.00", "foo": 1 }
-
-### id que não é número
-# esperado: 400 INVALID_PRODUCT_ID
-POST {{host}}/products/abc/batches
-Content-Type: application/json
-
-{ "packs": 1, "expiresAt": "2026-12-31", "totalCost": "10.00" }
-
-### produto que não existe
-# esperado: 404 PRODUCT_NOT_FOUND
-POST {{host}}/products/999999/batches
-Content-Type: application/json
-
-{ "packs": 1, "expiresAt": "2026-12-31", "totalCost": "10.00" }
+{
+  "idempotencyKey": "aaaa0009-0009-4009-8009-000000000009",
+  "foo": 1,
+  "items": [
+    { "productId": 36, "packs": 1, "totalCost": "10.00" }
+  ]
+}
 
 # ============================================================================
 # POST /sales   (carrinho transacional)

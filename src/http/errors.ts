@@ -13,7 +13,10 @@ export const INVALID_PRODUCT_ID = {
 };
 export const INVALID_CODE = { status: 400, body: { error: "INVALID_CODE" } };
 export const INVALID_PRICE = { status: 400, body: { error: "INVALID_PRICE" } };
-export const INVALID_BATCH = { status: 400, body: { error: "INVALID_BATCH" } };
+export const INVALID_STOCK_ENTRY = {
+  status: 400,
+  body: { error: "INVALID_STOCK_ENTRY" },
+};
 export const EXPIRY_REQUIRED = { status: 400, body: { error: "EXPIRY_REQUIRED" } };
 export const INVALID_JSON = { status: 400, body: { error: "INVALID_JSON" } };
 export const PRODUCT_NOT_FOUND = {
