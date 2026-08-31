@@ -6,12 +6,19 @@ As seções marcadas com **Adotado neste projeto** registram decisões tomadas a
 
 ---
 
-## 0. Idioma
+## 0. Idioma e nomes
 
 - **Código em inglês.** Identificadores, nomes de arquivo, diretórios, rotas, campos de JSON e mensagens de log.
 - **Convenção de nomes:** `camelCase` em TypeScript. Quando o banco usar `snake_case`, o mapeamento é responsabilidade do ORM, não do código de domínio.
 - **Dado de negócio permanece no idioma do negócio.** Nome de produto, razão social e texto vindo do usuário não são identificadores.
 - **Erro de API devolve código, não frase.** `{"error": "PRODUCT_NOT_FOUND"}`, não `{"error": "Produto não encontrado"}`. A redação para humano é decisão de quem consome a API, tomada onde se sabe quem é o leitor.
+
+**Nomes:**
+
+- **O nome deve deixar prever o que a variável guarda.** Quem lê `alreadyRegistered` já sabe o que esperar antes de ver o tipo.
+- **Booleano leva `is`/`has`/`should`; um valor que é objeto-ou-`null` leva um substantivo que o nomeia.** Um nome com `is` promete um sim/não — não o use para algo que carrega um objeto (`existingSale`, não `isSaleRegistered`, quando a variável guarda a venda).
+- **Prefira o termo técnico estabelecido quando ele existe** (`idempotencyKey`, não `raceConditionPreventionID`). Invente uma descrição só quando não há termo. O nome descreve a **identidade** do valor, não a finalidade de usá-lo — como `password`, e não `unauthorizedAccessPreventionString`.
+- **Nomes paralelos para código paralelo.** Fluxos que fazem a mesma coisa usam os mesmos nomes, para lerem lado a lado — como `alreadyRegistered` e `existing<Coisa>` na venda e na entrada.
 
 ---
 
@@ -231,6 +238,8 @@ Cada item traz a ameaça e a mitigação concreta. É uma checklist a consultar 
 - Mantenha o `JOURNAL.md` atualizado sem esperar pedido. Ele é um resumo curto e público do projeto: o que é, decisões estruturais, estado atual, próximos passos. Enuncie decisão como decisão, não como aprendizado. Não registre ali pendência em aberto, bug encontrado, conceito estudado nem narrativa de depuração — isso vive na conversa e no histórico do Git.
 - O `requests.http` deve cobrir todas as variantes de cada rota: o caminho de sucesso e cada forma de recusa. Ao adicionar uma rota nova, inclua esses exemplos no mesmo commit da rota. Cada exemplo leva um comentário organizado com duas informações: a descrição da requisição e o comportamento esperado dela.
 - Ao introduzir dependência nova, rota nova ou entrada vinda de fora, verifique a seção 4 antes de entregar e aponte o que ficou descoberto.
+- Nunca deixe segredo entrar no repositório, no log ou na resposta. Antes de entregar, verifique se chave de API, senha, token ou string de conexão não vazou para código versionado, log ou corpo de resposta — segredo vive só em variável de ambiente. Se encontrar um fora dela, pare e sinalize antes de qualquer commit.
+- Nenhum `console.log` de depuração entra num commit. Usá-lo para investigar durante o desenvolvimento é livre; antes de commitar, remova todos. Não confunda com o log estruturado da aplicação — as funções que escrevem JSON de evento no `stdout` (log por requisição, de erro, de validação, de inicialização) são a estratégia de observabilidade do Fator XI e ficam. A regra vale para o print solto que você adicionou para ver um valor.
 
 ### Consulte a fonte antes de afirmar
 
