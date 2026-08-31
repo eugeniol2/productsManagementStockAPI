@@ -3,126 +3,188 @@
 # Antes: npm run dev  e  npx prisma db seed
 # O seed reinicia as sequências: categorias 1..11, produtos 1..50, e o id do
 # produto bate com o código interno (id 11 = P0011).
-# POST /sales altera o estoque. Para restaurar, rode o seed de novo.
+# POST /sales e PUT .../price alteram o banco. Para restaurar, rode o seed.
 #
+# Cada exemplo segue o padrão:
+#   ### descrição da requisição
+#   # esperado: comportamento esperado
+#   METODO {{host}}/rota
 # Todo 400 responde { "error": CODIGO, "fields": [{ field, code, message }] }.
 
-# --- GET /products ----------------------------------------------------------
+# ============================================================================
+# GET /products
+# ============================================================================
 
-### 50 produtos ativos, ordenados por nome
+### lista o catálogo inteiro
+# esperado: 200 com 50 produtos ativos, ordenados por nome
 GET {{host}}/products
 
-### barra no fim, mesma resposta
+### mesma rota com barra no fim
+# esperado: 200 idêntico ao anterior; o Express normaliza a barra
 GET {{host}}/products/
 
-### filtra por categoria -> 4 produtos
+### filtra por categoria existente
+# esperado: 200 com os 4 produtos da categoria 7
 GET {{host}}/products?categoryId=7
 
-### categoria inexistente -> 200 com array vazio
+### filtra por categoria que não existe
+# esperado: 200 com array vazio; o recurso existe, o filtro é que não casa
 GET {{host}}/products?categoryId=99999
 
-### não é número -> 400 INVALID_QUERY em categoryId
+### categoryId que não é número
+# esperado: 400 INVALID_QUERY no campo categoryId
 GET {{host}}/products?categoryId=abc
 
-### sem valor -> 400, string vazia não é dígito
+### categoryId sem valor
+# esperado: 400 INVALID_QUERY; string vazia não é dígito
 GET {{host}}/products?categoryId=
 
-### "categoryid" com i minúsculo -> 400, chave não reconhecida
+### chave com grafia errada (categoryid, i minúsculo)
+# esperado: 400 INVALID_QUERY; o schema é estrito e rejeita a chave desconhecida
 GET {{host}}/products?categoryid=2
 
-### parâmetro desconhecido -> 400 em qualquerCoisa
+### parâmetro desconhecido
+# esperado: 400 INVALID_QUERY no campo qualquerCoisa
 GET {{host}}/products?qualquerCoisa=1
 
-### repetido: o Express monta um array e o schema quer string -> 400
+### parâmetro repetido
+# esperado: 400 INVALID_QUERY; o Express monta um array e o schema quer string
 GET {{host}}/products?categoryId=2&categoryId=3
 
-# --- GET /categories --------------------------------------------------------
+# ============================================================================
+# GET /categories
+# ============================================================================
 
-### 11 categorias. requiresExpiry diz se a entrada exige validade.
+### lista as categorias
+# esperado: 200 com 11 categorias; requiresExpiry diz se a entrada exige validade
 GET {{host}}/categories
 
-# --- GET /products/:id ------------------------------------------------------
+# ============================================================================
+# GET /products/:id
+# ============================================================================
 
-### Arroz Branco Tipo 1 5kg (P0001)
+### produto pelo id interno (Arroz Branco Tipo 1 5kg)
+# esperado: 200 com o produto P0001, categoria e códigos de barras
 GET {{host}}/products/1
 
-### Coca-Cola Lata 350ml (P0011)
+### produto pelo id interno (Coca-Cola Lata 350ml)
+# esperado: 200 com o produto P0011
 GET {{host}}/products/11
 
-### id inexistente -> 404 PRODUCT_NOT_FOUND
+### id que não existe
+# esperado: 404 PRODUCT_NOT_FOUND
 GET {{host}}/products/999999
 
-### id não numérico -> 400 INVALID_PRODUCT_ID
+### id que não é número
+# esperado: 400 INVALID_PRODUCT_ID; requisição malformada, não é "não encontrei"
 GET {{host}}/products/abc
 
-### hexadecimal -> 400. Number("0x11") daria 17; a rota exige só dígitos.
+### id em hexadecimal
+# esperado: 400 INVALID_PRODUCT_ID; a rota exige só dígitos antes de converter
 GET {{host}}/products/0x11
 
-# --- GET /products/code/:code -----------------------------------------------
-# Casa código de barras OU código interno, numa consulta só.
+### id acima do teto do int4 do Postgres
+# esperado: 400 INVALID_PRODUCT_ID; barrado na fronteira, não vira 500 no banco
+GET {{host}}/products/3000000000
 
-### por código de barras -> Coca-Cola
+# ============================================================================
+# GET /products/code/:code   (casa código de barras OU código interno)
+# ============================================================================
+
+### busca pelo código de barras da unidade
+# esperado: 200 com a Coca-Cola
 GET {{host}}/products/code/7890000001370
 
-### pelo código interno -> o mesmo produto
+### busca pelo código interno
+# esperado: 200 com o mesmo produto da requisição anterior
 GET {{host}}/products/code/P0011
 
-### Pão Francês não tem código de barras, só código interno
+### produto sem código de barras, só código interno (Pão Francês)
+# esperado: 200; prova por que a busca precisa olhar os dois campos
 GET {{host}}/products/code/P0024
 
-### código inexistente -> 404
+### código que não existe
+# esperado: 404 PRODUCT_NOT_FOUND
 GET {{host}}/products/code/0000000000000
 
-### sem código: vira /products/code e casa /products/:id -> 400
+### código com caractere fora do formato permitido
+# esperado: 400 INVALID_CODE; o formato é [A-Za-z0-9-], até 32 caracteres
+GET {{host}}/products/code/P0011@
+
+### sem código
+# esperado: 400 INVALID_PRODUCT_ID; vira /products/code e casa /products/:id
 GET {{host}}/products/code/
 
-# --- PUT /products/:id/price ------------------------------------------------
-# Muda o preço de venda por unidade. Afeta só vendas futuras: a venda já
-# registrada mantém o unitPrice congelado no momento em que ocorreu.
-# salePrice é string, respeita o Decimal(10,2) da coluna: até 8 dígitos e 2 casas.
+# ============================================================================
+# PUT /products/:id/price   (muda o preço de venda por unidade)
+# Afeta só vendas futuras: a venda já registrada mantém o unitPrice congelado.
+# salePrice é string e respeita o Decimal(10,2): até 8 dígitos e 2 casas.
+# ============================================================================
 
-### troca a etiqueta da Coca-Cola para 6.50 -> 200 com o produto atualizado
+### troca a etiqueta da Coca-Cola para 6.90
+# esperado: 200 com o produto atualizado; vendas seguintes usam o preço novo
 PUT {{host}}/products/11/price
 Content-Type: application/json
 
 { "salePrice": "6.90" }
 
-### preço negativo -> 400 INVALID_PRICE
+### preço negativo
+# esperado: 400 INVALID_PRICE; o "-" não é dígito e o valor não é > 0
 PUT {{host}}/products/11/price
 Content-Type: application/json
 
 { "salePrice": "-5.00" }
 
-### mais de duas casas decimais -> 400
+### preço zero
+# esperado: 400 INVALID_PRICE com a mensagem "must be greater than 0"
+PUT {{host}}/products/11/price
+Content-Type: application/json
+
+{ "salePrice": "0" }
+
+### mais de duas casas decimais
+# esperado: 400 INVALID_PRICE com a mensagem "max 2 decimal places"
 PUT {{host}}/products/11/price
 Content-Type: application/json
 
 { "salePrice": "6.999" }
 
-### acima do Decimal(10,2) -> 400, não 500: validado na fronteira
+### valor acima do Decimal(10,2)
+# esperado: 400 INVALID_PRICE com "max 8 integer digits"; barrado na fronteira, não 500
 PUT {{host}}/products/11/price
 Content-Type: application/json
 
 { "salePrice": "999999999.00" }
 
-### campo extra é recusado -> 400. Ninguém desativa um produto disfarçando
-### de edição de preço; o strictObject barra o active.
+### campo extra no corpo
+# esperado: 400 INVALID_PRICE; o strictObject barra o active, ninguém desativa disfarçado
 PUT {{host}}/products/11/price
 Content-Type: application/json
 
 { "salePrice": "6.50", "active": false }
 
-### produto inexistente -> 404 PRODUCT_NOT_FOUND
+### id que não é número
+# esperado: 400 INVALID_PRODUCT_ID
+PUT {{host}}/products/abc/price
+Content-Type: application/json
+
+{ "salePrice": "6.50" }
+
+### produto que não existe
+# esperado: 404 PRODUCT_NOT_FOUND
 PUT {{host}}/products/999999/price
 Content-Type: application/json
 
 { "salePrice": "6.50" }
 
-# --- POST /sales ------------------------------------------------------------
+# ============================================================================
+# POST /sales   (carrinho transacional)
 # idempotencyKey é obrigatória e precisa ser UUID. As chaves abaixo são fixas,
 # então a segunda execução devolve 200 replayed em vez de gravar de novo.
+# ============================================================================
 
-### 2 Coca-Colas -> 201
+### venda simples de 2 Coca-Colas
+# esperado: 201 com replayed:false e a alocação por fardo
 POST {{host}}/sales
 Content-Type: application/json
 
@@ -133,7 +195,8 @@ Content-Type: application/json
   ]
 }
 
-### carrinho com três produtos, uma transação -> 201
+### carrinho com três produtos numa transação
+# esperado: 201 com os três itens; cada unitPrice é o preço congelado da venda
 POST {{host}}/sales
 Content-Type: application/json
 
@@ -146,7 +209,8 @@ Content-Type: application/json
   ]
 }
 
-### rode duas vezes: 201 replayed:false, depois 200 replayed:true
+### mesma venda enviada duas vezes (rode duas vezes seguidas)
+# esperado: 1ª vez 201 replayed:false; 2ª vez 200 replayed:true, sem gravar de novo
 POST {{host}}/sales
 Content-Type: application/json
 
@@ -157,7 +221,8 @@ Content-Type: application/json
   ]
 }
 
-### mais que o estoque: a venda passa e shortfall registra a diferença
+### venda acima do estoque
+# esperado: 201; a venda passa e shortfall registra a diferença (a prateleira é a verdade)
 POST {{host}}/sales
 Content-Type: application/json
 
@@ -168,85 +233,8 @@ Content-Type: application/json
   ]
 }
 
-# --- POST /sales, o que é recusado ------------------------------------------
-
-### sem idempotencyKey -> 400 INVALID_SALE
-POST {{host}}/sales
-Content-Type: application/json
-
-{
-  "items": [
-    { "productId": 11, "quantity": 2 }
-  ]
-}
-
-### chave que não é UUID -> 400
-POST {{host}}/sales
-Content-Type: application/json
-
-{
-  "idempotencyKey": "pdv-0001",
-  "items": [
-    { "productId": 11, "quantity": 2 }
-  ]
-}
-
-### quantidade negativa -> 400 em items.0.quantity
-POST {{host}}/sales
-Content-Type: application/json
-
-{
-  "idempotencyKey": "55555555-5555-4555-8555-555555555555",
-  "items": [
-    { "productId": 11, "quantity": -5 }
-  ]
-}
-
-### quantidade fracionária: a loja vende por unidade -> 400
-POST {{host}}/sales
-Content-Type: application/json
-
-{
-  "idempotencyKey": "66666666-6666-4666-8666-666666666666",
-  "items": [
-    { "productId": 11, "quantity": 2.5 }
-  ]
-}
-
-### acima do teto de 10000 por item -> 400 too_big. Recusa entrada absurda,
-### nao venda legitima: vender mais que o estoque continua permitido.
-POST {{host}}/sales
-Content-Type: application/json
-
-{
-  "idempotencyKey": "12121212-1212-4121-8121-121212121212",
-  "items": [
-    { "productId": 11, "quantity": 10001 }
-  ]
-}
-
-### carrinho vazio -> 400
-POST {{host}}/sales
-Content-Type: application/json
-
-{
-  "idempotencyKey": "77777777-7777-4777-8777-777777777777",
-  "items": []
-}
-
-### produto inexistente -> 404 PRODUCT_NOT_FOUND
-POST {{host}}/sales
-Content-Type: application/json
-
-{
-  "idempotencyKey": "88888888-8888-4888-8888-888888888888",
-  "items": [
-    { "productId": 999999, "quantity": 1 }
-  ]
-}
-
-### unitPrice não existe no schema e some em silêncio: o cliente não
-### decide o próprio preço
+### campo extra dentro do item (unitPrice)
+# esperado: 201; o unitPrice é descartado em silêncio, o cliente não decide o próprio preço
 POST {{host}}/sales
 Content-Type: application/json
 
@@ -257,24 +245,106 @@ Content-Type: application/json
   ]
 }
 
-# --- erros que chegam ao handleErrors ---------------------------------------
-# Os de cima foram recusados pela rota. Estes nem chegam nela, e cada um grava
-# {"event":"request_failed"} no log. Deixe o terminal do npm run dev visível.
+### venda sem idempotencyKey
+# esperado: 400 INVALID_SALE no campo idempotencyKey
+POST {{host}}/sales
+Content-Type: application/json
 
-### JSON malformado: o express.json falha antes da rota -> 400 INVALID_JSON
+{
+  "items": [
+    { "productId": 11, "quantity": 2 }
+  ]
+}
+
+### idempotencyKey que não é UUID
+# esperado: 400 INVALID_SALE; o formato evita colisão entre dispositivos
+POST {{host}}/sales
+Content-Type: application/json
+
+{
+  "idempotencyKey": "pdv-0001",
+  "items": [
+    { "productId": 11, "quantity": 2 }
+  ]
+}
+
+### quantidade negativa
+# esperado: 400 INVALID_SALE em items.0.quantity
+POST {{host}}/sales
+Content-Type: application/json
+
+{
+  "idempotencyKey": "55555555-5555-4555-8555-555555555555",
+  "items": [
+    { "productId": 11, "quantity": -5 }
+  ]
+}
+
+### quantidade fracionária
+# esperado: 400 INVALID_SALE; a loja vende só por unidade
+POST {{host}}/sales
+Content-Type: application/json
+
+{
+  "idempotencyKey": "66666666-6666-4666-8666-666666666666",
+  "items": [
+    { "productId": 11, "quantity": 2.5 }
+  ]
+}
+
+### quantidade acima do teto de 10000 por item
+# esperado: 400 INVALID_SALE (too_big); recusa entrada absurda, não venda legítima
+POST {{host}}/sales
+Content-Type: application/json
+
+{
+  "idempotencyKey": "12121212-1212-4121-8121-121212121212",
+  "items": [
+    { "productId": 11, "quantity": 10001 }
+  ]
+}
+
+### carrinho vazio
+# esperado: 400 INVALID_SALE no campo items
+POST {{host}}/sales
+Content-Type: application/json
+
+{
+  "idempotencyKey": "77777777-7777-4777-8777-777777777777",
+  "items": []
+}
+
+### produto que não existe
+# esperado: 404 PRODUCT_NOT_FOUND
+POST {{host}}/sales
+Content-Type: application/json
+
+{
+  "idempotencyKey": "88888888-8888-4888-8888-888888888888",
+  "items": [
+    { "productId": 999999, "quantity": 1 }
+  ]
+}
+
+### JSON malformado
+# esperado: 400 INVALID_JSON; o express.json falha antes da rota, grava request_failed no log
 POST {{host}}/sales
 Content-Type: application/json
 
 {quebrado
 
-### 500 INTERNAL_ERROR. Não se provoca por requisição: derrube o banco com
-### "docker compose stop", rode, e depois "docker compose up -d".
+# ============================================================================
+# Erros de servidor e rotas inexistentes
+# ============================================================================
+
+### erro interno (não se provoca por requisição)
+# esperado: 500 INTERNAL_ERROR; derrube o banco com "docker compose stop", rode, e "up -d"
 GET {{host}}/products/11
 
-# --- rotas que não existem --------------------------------------------------
-
-### 404 NOT_FOUND
+### rota que não existe
+# esperado: 404 NOT_FOUND; atravessou a fila inteira e ninguém respondeu
 GET {{host}}/nao-existe
 
-### /sales só aceita POST -> mesmo 404
+### método não suportado numa rota existente
+# esperado: 404 NOT_FOUND; /sales só aceita POST
 GET {{host}}/sales
