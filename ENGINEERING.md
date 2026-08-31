@@ -226,8 +226,10 @@ Cada item traz a ameaça e a mitigação concreta. É uma checklist a consultar 
 - Ao entregar, informe o resultado real da verificação — checagem de tipos, testes e execução. Sem verificação, diga que não verificou.
 - Não afirme o que não pode comprovar. Suposição sobre ambiente, uso ou comportamento é hipótese, e deve ser apresentada como tal.
 - Ao alterar código existente, não remova o que não foi pedido. Sinalize e deixe a decisão com quem pediu.
+- Não altere o `ENGINEERING.md` sem confirmação de quem pede. Você pode propor a mudança na conversa, com o texto exato, e deve esperar o aceite antes de escrever no arquivo.
 - Nunca crie um commit você mesmo. Quando uma unidade de lógica estiver completa na sua forma mínima — uma rota nova, uma extração de constantes, uma correção — entregue na conversa os comandos `git add <arquivos>` e `git commit -m "<mensagem>"` para quem pediu executar. Uma unidade por commit, com o prefixo que a descreve (`feat`, `refactor`, `fix`, `docs`, `chore`). Não agrupe mudanças sem relação nem sugira commit de trabalho pela metade. Nunca inclua rodapé de coautoria nem qualquer atribuição ao assistente na mensagem.
 - Mantenha o `JOURNAL.md` atualizado sem esperar pedido. Ele é um resumo curto e público do projeto: o que é, decisões estruturais, estado atual, próximos passos. Enuncie decisão como decisão, não como aprendizado. Não registre ali pendência em aberto, bug encontrado, conceito estudado nem narrativa de depuração — isso vive na conversa e no histórico do Git.
+- O `requests.http` deve cobrir todas as variantes de cada rota: o caminho de sucesso e cada forma de recusa. Ao adicionar uma rota nova, inclua esses exemplos no mesmo commit da rota. Cada exemplo leva um comentário organizado com duas informações: a descrição da requisição e o comportamento esperado dela.
 - Ao introduzir dependência nova, rota nova ou entrada vinda de fora, verifique a seção 4 antes de entregar e aponte o que ficou descoberto.
 
 ### Consulte a fonte antes de afirmar
