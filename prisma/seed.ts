@@ -232,7 +232,7 @@ function barcodesFor(product: ProductSeed, productIndex: number) {
 async function clearDatabase() {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
-      movements, sale_items, sales, batches, product_barcodes, products
+      movements, sale_items, sales, batches, stock_entries, product_barcodes, products
     RESTART IDENTITY CASCADE
   `);
 }
