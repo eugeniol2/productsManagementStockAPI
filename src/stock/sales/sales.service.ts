@@ -41,10 +41,10 @@ export async function registerSale(
   try {
     return await recordSale(prisma, sale);
   } catch (error) {
-    const raced = await resolveIdempotencyRace(prisma, sale, error);
+    const existingSale = await resolveIdempotencyRace(prisma, sale, error);
 
-    if (raced) {
-      return raced;
+    if (existingSale) {
+      return existingSale;
     }
 
     throw error;
