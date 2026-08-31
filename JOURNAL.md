@@ -154,7 +154,7 @@ GET  /products                  catálogo
 GET  /products/:id              busca por id
 GET  /products/code/:code       código interno ou código de barras
 PUT  /products/:id/price        altera o preço de venda
-POST /products/:id/batches      entrada de mercadoria
+POST /stock-entries             entrada de mercadoria (nota com vários fardos)
 POST /sales                     registro de venda
 ```
 
