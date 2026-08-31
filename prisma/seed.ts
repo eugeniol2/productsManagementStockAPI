@@ -1,11 +1,10 @@
+import { pathToFileURL } from "node:url";
+
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type MovementType } from "@prisma/client";
 
 const TODAY = new Date("2026-08-29T00:00:00Z");
 const DAY_IN_MS = 86_400_000;
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 type CategorySeed = {
   name: string;
@@ -229,7 +228,7 @@ function barcodesFor(product: ProductSeed, productIndex: number) {
   return codes;
 }
 
-async function clearDatabase() {
+async function clearDatabase(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
       movements, sale_items, sales, batches, stock_entries, product_barcodes, products
@@ -237,7 +236,7 @@ async function clearDatabase() {
   `);
 }
 
-async function ensureCategories() {
+async function ensureCategories(prisma: PrismaClient) {
   const ids = new Map<string, number>();
 
   for (const category of categories) {
@@ -253,10 +252,10 @@ async function ensureCategories() {
   return ids;
 }
 
-async function seed() {
-  await clearDatabase();
+export async function seed(prisma: PrismaClient) {
+  await clearDatabase(prisma);
 
-  const categoryIds = await ensureCategories();
+  const categoryIds = await ensureCategories(prisma);
 
   for (const [index, product] of products.entries()) {
     const categoryId = categoryIds.get(product.category);
@@ -293,5 +292,14 @@ async function seed() {
   console.log(JSON.stringify({ event: "seed_finished", ...counts }));
 }
 
-await seed();
-await prisma.$disconnect();
+const runningAsScript =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (runningAsScript) {
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  const prisma = new PrismaClient({ adapter });
+
+  await seed(prisma);
+  await prisma.$disconnect();
+}
