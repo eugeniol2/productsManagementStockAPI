@@ -3,7 +3,7 @@
 # Antes: npm run dev  e  npx prisma db seed
 # O seed reinicia as sequências: categorias 1..11, produtos 1..50, e o id do
 # produto bate com o código interno (id 11 = P0011).
-# POST /sales e PUT .../price alteram o banco. Para restaurar, rode o seed.
+# POST /sales, POST .../batches e PUT .../price alteram o banco. Para restaurar, rode o seed.
 #
 # Cada exemplo segue o padrão:
 #   ### descrição da requisição
@@ -176,6 +176,84 @@ PUT {{host}}/products/999999/price
 Content-Type: application/json
 
 { "salePrice": "6.50" }
+
+# ============================================================================
+# POST /products/:id/batches   (entrada de mercadoria)
+# Cria um fardo e lança a ENTRADA no livro-razão, numa transação.
+# packs × unitsPerPack = unidades recebidas. unitsPerPack é opcional: sem ele,
+# usa o padrão do produto. totalCost é o total pago, string Decimal(10,2) > 0.
+# A validade é obrigatória se a categoria do produto exigir.
+# ============================================================================
+
+### entrada de 2 fardos de Coca (categoria Bebidas exige validade)
+# esperado: 201 com o fardo criado; currentUnits = 2 × 12 = 24
+POST {{host}}/products/11/batches
+Content-Type: application/json
+
+{ "packs": 2, "expiresAt": "2026-12-31", "totalCost": "200.00" }
+
+### entrada com unitsPerPack sobrescrito (fornecedor mudou de 12 para 6)
+# esperado: 201; currentUnits = 2 × 6 = 12, valendo só para este fardo
+POST {{host}}/products/11/batches
+Content-Type: application/json
+
+{ "packs": 2, "unitsPerPack": 6, "expiresAt": "2026-12-31", "totalCost": "50.00" }
+
+### entrada de Detergente (categoria Limpeza não exige validade)
+# esperado: 201 sem expiresAt; currentUnits = 5 × 24 = 120 pelo padrão do produto
+POST {{host}}/products/36/batches
+Content-Type: application/json
+
+{ "packs": 5, "totalCost": "90.00" }
+
+### validade faltando num produto que exige (Leite, categoria Laticínios)
+# esperado: 400 EXPIRY_REQUIRED
+POST {{host}}/products/17/batches
+Content-Type: application/json
+
+{ "packs": 3, "totalCost": "150.00" }
+
+### validade no passado
+# esperado: 400 INVALID_BATCH com a mensagem "must not be in the past"
+POST {{host}}/products/11/batches
+Content-Type: application/json
+
+{ "packs": 1, "expiresAt": "2020-01-01", "totalCost": "10.00" }
+
+### packs zero
+# esperado: 400 INVALID_BATCH; a entrada precisa de pelo menos um fardo
+POST {{host}}/products/11/batches
+Content-Type: application/json
+
+{ "packs": 0, "expiresAt": "2026-12-31", "totalCost": "10.00" }
+
+### custo negativo
+# esperado: 400 INVALID_BATCH
+POST {{host}}/products/11/batches
+Content-Type: application/json
+
+{ "packs": 2, "expiresAt": "2026-12-31", "totalCost": "-5.00" }
+
+### campo extra no corpo
+# esperado: 400 INVALID_BATCH; o strictObject barra qualquer campo não declarado
+POST {{host}}/products/11/batches
+Content-Type: application/json
+
+{ "packs": 2, "expiresAt": "2026-12-31", "totalCost": "10.00", "foo": 1 }
+
+### id que não é número
+# esperado: 400 INVALID_PRODUCT_ID
+POST {{host}}/products/abc/batches
+Content-Type: application/json
+
+{ "packs": 1, "expiresAt": "2026-12-31", "totalCost": "10.00" }
+
+### produto que não existe
+# esperado: 404 PRODUCT_NOT_FOUND
+POST {{host}}/products/999999/batches
+Content-Type: application/json
+
+{ "packs": 1, "expiresAt": "2026-12-31", "totalCost": "10.00" }
 
 # ============================================================================
 # POST /sales   (carrinho transacional)

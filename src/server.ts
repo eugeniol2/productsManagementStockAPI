@@ -2,6 +2,8 @@ import express, { type Request, type Response } from "express";
 
 import { prisma } from "./database/prisma.ts";
 import {
+  EXPIRY_REQUIRED,
+  INVALID_BATCH,
   INVALID_CODE,
   INVALID_PRICE,
   INVALID_PRODUCT_ID,
@@ -31,6 +33,8 @@ import {
   productQuerySchema,
 } from "./stock/products/products.schema.ts";
 import { updateProductPrice } from "./stock/products/products.service.ts";
+import { batchSchema } from "./stock/batches/batches.schema.ts";
+import { registerBatch } from "./stock/batches/batches.service.ts";
 import { saleSchema } from "./stock/sales/sales.schema.ts";
 import { ProductNotFound, registerSale } from "./stock/sales/sales.service.ts";
 
@@ -117,6 +121,33 @@ app.put(
       return;
     }
     res.json(product);
+  },
+);
+
+app.post(
+  "/products/:id/batches",
+  async (req: Request<{ id: string }>, res: Response) => {
+    const id = parseId(req.params.id);
+
+    if (id === null) {
+      fail(res, INVALID_PRODUCT_ID);
+      return;
+    }
+
+    const body = batchSchema.safeParse(req.body);
+
+    if (!body.success) {
+      rejectInvalid(req, res, INVALID_BATCH, body.error);
+      return;
+    }
+
+    const result = await registerBatch(prisma, id, body.data);
+
+    if (!result.ok) {
+      fail(res, result.reason === "PRODUCT_NOT_FOUND" ? PRODUCT_NOT_FOUND : EXPIRY_REQUIRED);
+      return;
+    }
+    res.status(201).json(result.batch);
   },
 );
 
