@@ -50,8 +50,9 @@ O seed popula o banco com dados determinísticos: 11 categorias e 50 produtos co
 ## Testes
 
 ```bash
-npm test          # roda a suíte uma vez
-npm run typecheck # verificação de tipos
+npm test                 # suíte pura (FEFO e schemas), sem banco — roda a cada commit
+npm run test:integration # contra um Postgres descartável, provisionado automaticamente
+npm run typecheck        # verificação de tipos
 ```
 
-Os testes cobrem a alocação FEFO e a validação de entrada. Cobertura de integração (rotas, transação, idempotência) é dívida conhecida e está registrada no [JOURNAL.md](JOURNAL.md#dívida-conhecida-testes-de-integração).
+A suíte pura cobre a alocação FEFO e a validação de entrada. A de integração cobre a entrada de mercadoria — transação, idempotência e atomicidade — contra um banco `stock_test` que ela mesma cria e migra (precisa do Postgres no ar). A venda, a concorrência e as rotas ainda não têm cobertura; o plano está no [JOURNAL.md](JOURNAL.md#testes-de-integração).

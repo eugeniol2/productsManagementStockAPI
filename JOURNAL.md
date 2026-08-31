@@ -182,17 +182,13 @@ O BFF nunca fala com o banco: ele fala com o núcleo por HTTP. Se um dia precisa
 
 A solução é o cliente gerar um identificador único por venda e o servidor recusar repetição — na prática, uma coluna com restrição de unicidade na tabela de movimentações. Decidir isso antes custa uma coluna; descobrir depois custa reconciliar estoque real.
 
-## Dívida conhecida: testes de integração
+## Testes de integração
 
-A suíte cobre duas coisas — a decisão do FEFO e o formato do corpo da venda. São os dois módulos que não tocam nada externo, e por isso rodam em milissegundos.
+A suíte pura cobre a decisão do FEFO e o formato dos corpos — os módulos que não tocam nada externo, e por isso rodam em milissegundos. Ela roda a cada commit.
 
-Tudo que depende do banco está **sem cobertura automatizada**: as consultas, as rotas e seus status, a validação dos parâmetros, a transação da venda, a idempotência e o seed. Foi tudo verificado à mão, uma vez, e nada disso volta a ser verificado sozinho.
+A suíte de integração já existe, num comando separado (`npm run test:integration`): roda contra um banco descartável (`stock_test`), que ela mesma provisiona e migra, e limpa entre os casos semeando de novo. Hoje cobre a entrada de mercadoria — a transação da nota, a idempotência e a atomicidade quando um item é recusado. Fica separada de propósito: o `npm test` do dia a dia continua rápido e sem depender de banco.
 
-O caso mais grave é o **teste de concorrência**. Ele existiu como script descartável e provou o que nenhum outro prova: sem `SELECT ... FOR UPDATE`, quinze vendas simultâneas leem o mesmo saldo e todas descontam do mesmo fardo, que vai a −9 enquanto o fardo seguinte fica intocado. O saldo e o livro-razão continuam concordando, então nada denuncia o erro — o que quebra é a alocação por validade, em silêncio.
-
-É a parte mais difícil do sistema e a única sem rede de proteção.
-
-Quando for feito, fica em suíte separada: `npm test` continua rápido e sem dependências, e a integração roda contra um Postgres descartável, limpando entre casos.
+Falta cobrir o resto do que toca o banco: a venda, as consultas e as rotas com seus status. O caso mais importante é o **teste de concorrência** da venda. Um script descartável já provou o que nenhum outro prova: sem `SELECT ... FOR UPDATE`, quinze vendas simultâneas leem o mesmo saldo e todas descontam do mesmo fardo, que vai a −9 enquanto o fardo seguinte fica intocado. O saldo e o livro-razão continuam concordando, então nada denuncia o erro — o que quebra é a alocação por validade, em silêncio. Com o harness pronto, ele vira mais um caso.
 
 ## Próximos passos
 
