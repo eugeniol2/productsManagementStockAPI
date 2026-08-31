@@ -149,11 +149,13 @@ Por isso o alerta de vencimento **não é uma afirmação, é um gatilho** para 
 Node com TypeScript executado sem etapa de build, Express, Zod na validação de entrada, Prisma sobre PostgreSQL, Vitest nos testes.
 
 ```
-GET  /categories              categorias
-GET  /products                catálogo
-GET  /products/:id            busca por id
-GET  /products/code/:code     código interno ou código de barras
-POST /sales                   registro de venda
+GET  /categories                categorias
+GET  /products                  catálogo
+GET  /products/:id              busca por id
+GET  /products/code/:code       código interno ou código de barras
+PUT  /products/:id/price        altera o preço de venda
+POST /products/:id/batches      entrada de mercadoria
+POST /sales                     registro de venda
 ```
 
 O modelo descrito acima está implementado no Postgres: categorias, produtos com múltiplos códigos de barras, fardos com validade e custo, e o livro-razão de movimentações. A venda é transacional, com bloqueio de linha, baixa pelo fardo de validade mais próxima e chave de idempotência obrigatória.
@@ -194,7 +196,6 @@ Quando for feito, fica em suíte separada: `npm test` continua rápido e sem dep
 
 ## Próximos passos
 
-- Entrada de mercadoria com conversão de fardo para unidade
 - Testes de integração, começando pelo de concorrência
 - Ajuste de inventário e alertas de vencimento e estoque baixo
 - Relatório de margem sobre custo médio ponderado
