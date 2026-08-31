@@ -27,6 +27,8 @@ Node 24 executando TypeScript sem etapa de build · Express 5 · Zod na validaç
 | `GET` | `/products` | Catálogo; aceita `?categoryId=` |
 | `GET` | `/products/:id` | Produto pelo id interno |
 | `GET` | `/products/code/:code` | Produto por código interno ou de barras |
+| `PUT` | `/products/:id/price` | Altera o preço de venda por unidade |
+| `POST` | `/products/:id/batches` | Entrada de mercadoria (novo fardo) |
 | `POST` | `/sales` | Registra uma venda (carrinho transacional) |
 
 Exemplos de requisição, incluindo os casos de erro, estão em [requests.http](requests.http).
