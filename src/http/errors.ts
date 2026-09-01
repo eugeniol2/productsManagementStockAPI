@@ -19,6 +19,7 @@ export const INVALID_STOCK_ENTRY = {
 };
 export const EXPIRY_REQUIRED = { status: 400, body: { error: "EXPIRY_REQUIRED" } };
 export const INVALID_JSON = { status: 400, body: { error: "INVALID_JSON" } };
+export const UNAUTHORIZED = { status: 401, body: { error: "UNAUTHORIZED" } };
 export const PRODUCT_NOT_FOUND = {
   status: 404,
   body: { error: "PRODUCT_NOT_FOUND" },

@@ -1,6 +1,9 @@
+import { pathToFileURL } from "node:url";
+
 import express, { type Request, type Response } from "express";
 
 import { prisma } from "./database/prisma.ts";
+import { requireAuth } from "./http/auth.ts";
 import {
   EXPIRY_REQUIRED,
   INVALID_CODE,
@@ -38,11 +41,12 @@ import { registerStockEntry } from "./stock/stockEntries/stockEntries.service.ts
 import { saleSchema } from "./stock/sales/sales.schema.ts";
 import { ProductNotFound, registerSale } from "./stock/sales/sales.service.ts";
 
-const app = express();
+export const app = express();
 const port = Number(process.env.PORT ?? 3000);
 app.disable("x-powered-by");
 app.use(logRequest);
 app.use(express.json({ limit: MAX_BODY_SIZE }));
+app.use(requireAuth);
 
 app.get("/categories", async (req: Request, res: Response) => {
   res.json(await listCategories(prisma));
@@ -171,19 +175,25 @@ app.use((req: Request, res: Response) => {
 
 app.use(handleErrors);
 
-const server = app.listen(port, () => {
-  console.log(JSON.stringify({ event: "server_started", port }));
-});
+const runningAsScript =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 
-server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
-server.headersTimeout = HEADERS_TIMEOUT_MS;
-server.requestTimeout = REQUEST_TIMEOUT_MS;
-
-function shutdownGracefully() {
-  server.close(() => {
-    void prisma.$disconnect().then(() => process.exit(0));
+if (runningAsScript) {
+  const server = app.listen(port, () => {
+    console.log(JSON.stringify({ event: "server_started", port }));
   });
-}
 
-process.on("SIGTERM", shutdownGracefully);
-process.on("SIGINT", shutdownGracefully);
+  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = HEADERS_TIMEOUT_MS;
+  server.requestTimeout = REQUEST_TIMEOUT_MS;
+
+  const shutdownGracefully = () => {
+    server.close(() => {
+      void prisma.$disconnect().then(() => process.exit(0));
+    });
+  };
+
+  process.on("SIGTERM", shutdownGracefully);
+  process.on("SIGINT", shutdownGracefully);
+}
