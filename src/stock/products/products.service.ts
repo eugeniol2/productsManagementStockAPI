@@ -4,11 +4,12 @@ import { findProductById } from "./products.queries.ts";
 
 export async function updateProductPrice(
   prisma: PrismaClient,
+  accountId: string,
   id: number,
   salePrice: string,
 ) {
   const updated = await prisma.product.updateMany({
-    where: { id, active: true },
+    where: { id, accountId, active: true },
     data: { salePrice },
   });
 
@@ -16,5 +17,5 @@ export async function updateProductPrice(
     return null;
   }
 
-  return findProductById(prisma, id);
+  return findProductById(prisma, accountId, id);
 }

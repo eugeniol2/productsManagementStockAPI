@@ -43,7 +43,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   try {
     const { payload } = await jwtVerify(token, key, { algorithms: [ALGORITHM] });
-    res.locals.auth = payload;
+
+    if (typeof payload.accountId !== "string") {
+      fail(res, UNAUTHORIZED);
+      return;
+    }
+
+    res.locals.accountId = payload.accountId;
+    res.locals.operatorId = typeof payload.sub === "string" ? payload.sub : null;
     next();
   } catch {
     fail(res, UNAUTHORIZED);

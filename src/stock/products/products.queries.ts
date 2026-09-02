@@ -8,24 +8,33 @@ const withCategoryAndBarcodes = {
   },
 } as const;
 
-export function listProducts(prisma: PrismaClient, categoryId?: number) {
+export function listProducts(
+  prisma: PrismaClient,
+  accountId: string,
+  categoryId?: number,
+) {
   return prisma.product.findMany({
-    where: { active: true, categoryId },
+    where: { accountId, active: true, categoryId },
     orderBy: { name: "asc" },
     include: withCategoryAndBarcodes,
   });
 }
 
-export function findProductById(prisma: PrismaClient, id: number) {
+export function findProductById(prisma: PrismaClient, accountId: string, id: number) {
   return prisma.product.findFirst({
-    where: { id, active: true },
+    where: { id, accountId, active: true },
     include: withCategoryAndBarcodes,
   });
 }
 
-export function findProductByCode(prisma: PrismaClient, code: string) {
+export function findProductByCode(
+  prisma: PrismaClient,
+  accountId: string,
+  code: string,
+) {
   return prisma.product.findFirst({
     where: {
+      accountId,
       active: true,
       OR: [{ internalCode: code }, { barcodes: { some: { code } } }],
     },

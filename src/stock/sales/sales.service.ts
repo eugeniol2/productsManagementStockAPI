@@ -27,10 +27,13 @@ export type RegisteredSale = {
 
 export async function registerSale(
   prisma: PrismaClient,
+  accountId: string,
+  operatorId: string | null,
   sale: Sale,
 ): Promise<RegisteredSale> {
   const alreadyRegistered = await findByIdempotencyKey(
     prisma,
+    accountId,
     sale.idempotencyKey,
   );
 
@@ -39,9 +42,9 @@ export async function registerSale(
   }
 
   try {
-    return await recordSale(prisma, sale);
+    return await recordSale(prisma, accountId, operatorId, sale);
   } catch (error) {
-    const existingSale = await resolveIdempotencyRace(prisma, sale, error);
+    const existingSale = await resolveIdempotencyRace(prisma, accountId, sale, error);
 
     if (existingSale) {
       return existingSale;
@@ -53,6 +56,7 @@ export async function registerSale(
 
 async function resolveIdempotencyRace(
   prisma: PrismaClient,
+  accountId: string,
   sale: Sale,
   error: unknown,
 ): Promise<RegisteredSale | null> {
@@ -64,17 +68,22 @@ async function resolveIdempotencyRace(
     return null;
   }
 
-  return findByIdempotencyKey(prisma, sale.idempotencyKey);
+  return findByIdempotencyKey(prisma, accountId, sale.idempotencyKey);
 }
 
-function recordSale(prisma: PrismaClient, sale: Sale): Promise<RegisteredSale> {
+function recordSale(
+  prisma: PrismaClient,
+  accountId: string,
+  operatorId: string | null,
+  sale: Sale,
+): Promise<RegisteredSale> {
   return prisma.$transaction(async (transaction) => {
     const items = mergeItemsByProduct(sale.items);
-    const prices = await priceEachProduct(transaction, items);
-    const batchesByProduct = await lockBatchesOf(transaction, items);
+    const prices = await priceEachProduct(transaction, accountId, items);
+    const batchesByProduct = await lockBatchesOf(transaction, accountId, items);
 
     const created = await transaction.sale.create({
-      data: { idempotencyKey: sale.idempotencyKey },
+      data: { accountId, operatorId, idempotencyKey: sale.idempotencyKey },
       select: { id: true, occurredAt: true },
     });
 
@@ -82,7 +91,14 @@ function recordSale(prisma: PrismaClient, sale: Sale): Promise<RegisteredSale> {
 
     for (const item of items) {
       registered.push(
-        await registerItem(transaction, created.id, item, prices, batchesByProduct),
+        await registerItem(
+          transaction,
+          accountId,
+          created.id,
+          item,
+          prices,
+          batchesByProduct,
+        ),
       );
     }
 
@@ -107,10 +123,11 @@ function mergeItemsByProduct(items: SaleItem[]): SaleItem[] {
 
 async function priceEachProduct(
   transaction: Transaction,
+  accountId: string,
   items: SaleItem[],
 ): Promise<Map<number, string>> {
   const products = await transaction.product.findMany({
-    where: { id: { in: items.map((item) => item.productId) } },
+    where: { accountId, id: { in: items.map((item) => item.productId) } },
     select: { id: true, salePrice: true },
   });
 
@@ -129,6 +146,7 @@ async function priceEachProduct(
 
 async function lockBatchesOf(
   transaction: Transaction,
+  accountId: string,
   items: SaleItem[],
 ): Promise<Map<number, AllocatableBatch[]>> {
   const productIds = items.map((item) => item.productId);
@@ -139,7 +157,7 @@ async function lockBatchesOf(
     SELECT id, product_id AS "productId", expires_at AS "expiresAt",
            current_units AS "currentUnits"
     FROM batches
-    WHERE product_id = ANY(${productIds})
+    WHERE account_id = ${accountId} AND product_id = ANY(${productIds})
     ORDER BY id
     FOR UPDATE
   `;
@@ -157,6 +175,7 @@ async function lockBatchesOf(
 
 async function registerItem(
   transaction: Transaction,
+  accountId: string,
   saleId: number,
   item: SaleItem,
   prices: Map<number, string>,
@@ -167,12 +186,13 @@ async function registerItem(
   const batches =
     known.length > 0
       ? known
-      : [await createEmptyBatch(transaction, item.productId)];
+      : [await createEmptyBatch(transaction, accountId, item.productId)];
 
   const { allocations, shortfall } = allocateByExpiry(batches, item.quantity);
 
   await transaction.saleItem.create({
     data: {
+      accountId,
       saleId,
       productId: item.productId,
       quantity: item.quantity,
@@ -189,6 +209,7 @@ async function registerItem(
 
     await transaction.movement.create({
       data: {
+        accountId,
         batchId: allocation.batchId,
         saleId,
         type: "SALE",
@@ -202,10 +223,12 @@ async function registerItem(
 
 async function createEmptyBatch(
   transaction: Transaction,
+  accountId: string,
   productId: number,
 ): Promise<AllocatableBatch> {
   return transaction.batch.create({
     data: {
+      accountId,
       productId,
       expiresAt: null,
       receivedUnits: 0,
@@ -218,10 +241,11 @@ async function createEmptyBatch(
 
 async function findByIdempotencyKey(
   prisma: PrismaClient,
+  accountId: string,
   idempotencyKey: string,
 ): Promise<RegisteredSale | null> {
-  const sale = await prisma.sale.findUnique({
-    where: { idempotencyKey },
+  const sale = await prisma.sale.findFirst({
+    where: { accountId, idempotencyKey },
     select: {
       id: true,
       occurredAt: true,

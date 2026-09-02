@@ -49,7 +49,7 @@ app.use(express.json({ limit: MAX_BODY_SIZE }));
 app.use(requireAuth);
 
 app.get("/categories", async (req: Request, res: Response) => {
-  res.json(await listCategories(prisma));
+  res.json(await listCategories(prisma, res.locals.accountId));
 });
 
 app.get("/products", async (req: Request, res: Response) => {
@@ -60,7 +60,7 @@ app.get("/products", async (req: Request, res: Response) => {
     return;
   }
 
-  res.json(await listProducts(prisma, query.data.categoryId));
+  res.json(await listProducts(prisma, res.locals.accountId, query.data.categoryId));
 });
 
 app.get(
@@ -71,7 +71,7 @@ app.get(
       return;
     }
 
-    const product = await findProductByCode(prisma, req.params.code);
+    const product = await findProductByCode(prisma, res.locals.accountId, req.params.code);
 
     if (!product) {
       fail(res, PRODUCT_NOT_FOUND);
@@ -91,7 +91,7 @@ app.get(
       return;
     }
 
-    const product = await findProductById(prisma, id);
+    const product = await findProductById(prisma, res.locals.accountId, id);
 
     if (!product) {
       fail(res, PRODUCT_NOT_FOUND);
@@ -118,7 +118,12 @@ app.put(
       return;
     }
 
-    const product = await updateProductPrice(prisma, id, body.data.salePrice);
+    const product = await updateProductPrice(
+      prisma,
+      res.locals.accountId,
+      id,
+      body.data.salePrice,
+    );
 
     if (!product) {
       fail(res, PRODUCT_NOT_FOUND);
@@ -136,7 +141,12 @@ app.post("/stock-entries", async (req: Request, res: Response) => {
     return;
   }
 
-  const result = await registerStockEntry(prisma, body.data);
+  const result = await registerStockEntry(
+    prisma,
+    res.locals.accountId,
+    res.locals.operatorId,
+    body.data,
+  );
 
   if (!result.ok) {
     fail(res, result.reason === "PRODUCT_NOT_FOUND" ? PRODUCT_NOT_FOUND : EXPIRY_REQUIRED);
@@ -156,7 +166,12 @@ app.post("/sales", async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await registerSale(prisma, sale.data);
+    const result = await registerSale(
+      prisma,
+      res.locals.accountId,
+      res.locals.operatorId,
+      sale.data,
+    );
 
     res.status(result.replayed ? 200 : 201).json(result);
   } catch (error) {

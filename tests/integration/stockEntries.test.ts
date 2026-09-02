@@ -2,12 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import { beforeEach, expect, test } from "vitest";
 
+import { DEMO_ACCOUNT_ID } from "../../prisma/seed.ts";
 import { registerStockEntry } from "../../src/stock/stockEntries/stockEntries.service.ts";
 import { prisma, resetDatabase } from "./helpers/db.ts";
 
 beforeEach(async () => {
   await resetDatabase();
 });
+
+function register(input: Parameters<typeof registerStockEntry>[3]) {
+  return registerStockEntry(prisma, DEMO_ACCOUNT_ID, null, input);
+}
 
 function validEntry() {
   return {
@@ -21,7 +26,7 @@ function validEntry() {
 }
 
 test("registra uma nota com seus fardos, convertendo fardo em unidade", async () => {
-  const result = await registerStockEntry(prisma, validEntry());
+  const result = await register(validEntry());
 
   expect(result.ok).toBe(true);
   if (!result.ok) return;
@@ -34,8 +39,8 @@ test("registra uma nota com seus fardos, convertendo fardo em unidade", async ()
 test("reenvio com a mesma idempotencyKey devolve a nota existente sem duplicar", async () => {
   const input = validEntry();
 
-  const first = await registerStockEntry(prisma, input);
-  const second = await registerStockEntry(prisma, input);
+  const first = await register(input);
+  const second = await register(input);
 
   expect(first.ok && second.ok).toBe(true);
   if (!first.ok || !second.ok) return;
@@ -46,7 +51,7 @@ test("reenvio com a mesma idempotencyKey devolve a nota existente sem duplicar",
 });
 
 test("recusa a nota inteira quando um item exige validade e não a traz", async () => {
-  const result = await registerStockEntry(prisma, {
+  const result = await register({
     idempotencyKey: randomUUID(),
     items: [
       { productId: 11, packs: 1, expiresAt: "2026-12-31", totalCost: "10.00" },

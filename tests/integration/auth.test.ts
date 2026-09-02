@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 
 import express from "express";
@@ -7,10 +8,12 @@ import { signToken, signWithOtherKey } from "./helpers/auth.ts";
 import { requireAuth } from "../../src/http/auth.ts";
 import { app as coreApp } from "../../src/server.ts";
 
+const ACCOUNT = randomUUID();
+
 const app = express();
 app.use(requireAuth);
 app.get("/protected", (req, res) => {
-  res.json({ auth: res.locals.auth });
+  res.json({ accountId: res.locals.accountId, operatorId: res.locals.operatorId });
 });
 
 let server: Server;
@@ -45,22 +48,28 @@ test("sem token -> 401", async () => {
   expect(response.status).toBe(401);
 });
 
-test("token válido -> 200 e expõe o payload", async () => {
-  const token = await signToken({ accountId: 7 });
+test("token válido -> 200 e expõe o accountId", async () => {
+  const token = await signToken({ accountId: ACCOUNT });
   const response = await fetch(`${baseUrl}/protected`, withToken(token));
 
   expect(response.status).toBe(200);
-  expect((await response.json()).auth.accountId).toBe(7);
+  expect((await response.json()).accountId).toBe(ACCOUNT);
+});
+
+test("token válido sem accountId -> 401", async () => {
+  const token = await signToken({});
+  const response = await fetch(`${baseUrl}/protected`, withToken(token));
+  expect(response.status).toBe(401);
 });
 
 test("token expirado -> 401", async () => {
-  const token = await signToken({ accountId: 7 }, "-1h");
+  const token = await signToken({ accountId: ACCOUNT }, "-1h");
   const response = await fetch(`${baseUrl}/protected`, withToken(token));
   expect(response.status).toBe(401);
 });
 
 test("token adulterado -> 401", async () => {
-  const [header, payload, signature] = (await signToken({ accountId: 7 })).split(".");
+  const [header, payload, signature] = (await signToken({ accountId: ACCOUNT })).split(".");
   const response = await fetch(
     `${baseUrl}/protected`,
     withToken(`${header}.${payload}x.${signature}`),
@@ -69,7 +78,7 @@ test("token adulterado -> 401", async () => {
 });
 
 test("assinado por outra chave -> 401", async () => {
-  const token = await signWithOtherKey({ accountId: 7 });
+  const token = await signWithOtherKey({ accountId: ACCOUNT });
   const response = await fetch(`${baseUrl}/protected`, withToken(token));
   expect(response.status).toBe(401);
 });

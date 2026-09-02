@@ -5,7 +5,7 @@ import { PrismaClient, type MovementType } from "@prisma/client";
 
 const TODAY = new Date("2026-08-29T00:00:00Z");
 const DAY_IN_MS = 86_400_000;
-const DEMO_ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
+export const DEMO_ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
 
 type CategorySeed = {
   name: string;
@@ -260,9 +260,7 @@ async function ensureCategories(prisma: PrismaClient, accountId: string) {
   return ids;
 }
 
-export async function seed(prisma: PrismaClient, accountId = DEMO_ACCOUNT_ID) {
-  await clearDatabase(prisma);
-
+export async function seedAccount(prisma: PrismaClient, accountId = DEMO_ACCOUNT_ID) {
   const categoryIds = await ensureCategories(prisma, accountId);
 
   for (const [index, product] of products.entries()) {
@@ -289,6 +287,12 @@ export async function seed(prisma: PrismaClient, accountId = DEMO_ACCOUNT_ID) {
       },
     });
   }
+}
+
+export async function seed(prisma: PrismaClient, accountId = DEMO_ACCOUNT_ID) {
+  await clearDatabase(prisma);
+
+  await seedAccount(prisma, accountId);
 
   const counts = {
     categories: await prisma.category.count(),

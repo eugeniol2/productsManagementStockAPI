@@ -27,15 +27,21 @@ type EntryProduct = { unitsPerPack: number; requiresExpiry: boolean };
 
 export async function registerStockEntry(
   prisma: PrismaClient,
+  accountId: string,
+  operatorId: string | null,
   input: StockEntryInput,
 ): Promise<StockEntryResult> {
-  const alreadyRegistered = await findByIdempotencyKey(prisma, input.idempotencyKey);
+  const alreadyRegistered = await findByIdempotencyKey(
+    prisma,
+    accountId,
+    input.idempotencyKey,
+  );
 
   if (alreadyRegistered) {
     return { ok: true, entry: alreadyRegistered, replayed: true };
   }
 
-  const productsById = await productsOf(prisma, input);
+  const productsById = await productsOf(prisma, accountId, input);
 
   for (const item of input.items) {
     const product = productsById.get(item.productId);
@@ -49,11 +55,11 @@ export async function registerStockEntry(
   }
 
   try {
-    const entry = await recordStockEntry(prisma, input, productsById);
+    const entry = await recordStockEntry(prisma, accountId, operatorId, input, productsById);
 
     return { ok: true, entry, replayed: false };
   } catch (error) {
-    const existingEntry = await resolveIdempotencyRace(prisma, input, error);
+    const existingEntry = await resolveIdempotencyRace(prisma, accountId, input, error);
 
     if (existingEntry) {
       return { ok: true, entry: existingEntry, replayed: true };
@@ -65,10 +71,15 @@ export async function registerStockEntry(
 
 async function productsOf(
   prisma: PrismaClient,
+  accountId: string,
   input: StockEntryInput,
 ): Promise<Map<number, EntryProduct>> {
   const foundProducts = await prisma.product.findMany({
-    where: { id: { in: input.items.map((item) => item.productId) }, active: true },
+    where: {
+      accountId,
+      id: { in: input.items.map((item) => item.productId) },
+      active: true,
+    },
     select: {
       id: true,
       unitsPerPack: true,
@@ -89,12 +100,16 @@ async function productsOf(
 
 function recordStockEntry(
   prisma: PrismaClient,
+  accountId: string,
+  operatorId: string | null,
   input: StockEntryInput,
   productsById: Map<number, EntryProduct>,
 ): Promise<RegisteredEntry> {
   return prisma.$transaction(async (transaction) => {
     const entry = await transaction.stockEntry.create({
       data: {
+        accountId,
+        operatorId,
         idempotencyKey: input.idempotencyKey,
         supplier: input.supplier ?? null,
         invoiceNumber: input.invoiceNumber ?? null,
@@ -117,6 +132,7 @@ function recordStockEntry(
 
       const batch = await transaction.batch.create({
         data: {
+          accountId,
           productId: item.productId,
           stockEntryId: entry.id,
           expiresAt: item.expiresAt ? new Date(item.expiresAt) : null,
@@ -134,7 +150,7 @@ function recordStockEntry(
       });
 
       await transaction.movement.create({
-        data: { batchId: batch.id, type: "ENTRY", quantity: receivedUnits },
+        data: { accountId, batchId: batch.id, type: "ENTRY", quantity: receivedUnits },
       });
 
       batches.push({ ...batch, totalCost: batch.totalCost.toFixed(2) });
@@ -146,6 +162,7 @@ function recordStockEntry(
 
 async function resolveIdempotencyRace(
   prisma: PrismaClient,
+  accountId: string,
   input: StockEntryInput,
   error: unknown,
 ): Promise<RegisteredEntry | null> {
@@ -156,15 +173,16 @@ async function resolveIdempotencyRace(
     return null;
   }
 
-  return findByIdempotencyKey(prisma, input.idempotencyKey);
+  return findByIdempotencyKey(prisma, accountId, input.idempotencyKey);
 }
 
 async function findByIdempotencyKey(
   prisma: PrismaClient,
+  accountId: string,
   idempotencyKey: string,
 ): Promise<RegisteredEntry | null> {
-  const entry = await prisma.stockEntry.findUnique({
-    where: { idempotencyKey },
+  const entry = await prisma.stockEntry.findFirst({
+    where: { accountId, idempotencyKey },
     select: {
       id: true,
       supplier: true,
