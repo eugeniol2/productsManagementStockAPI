@@ -8,17 +8,20 @@ datasource db {
 
 model Category {
   id             Int     @id @default(autoincrement())
-  name           String  @unique
+  accountId      String? @map("account_id")
+  name           String
   requiresExpiry Boolean @map("requires_expiry")
 
   products Product[]
 
+  @@unique([accountId, name])
   @@map("categories")
 }
 
 model Product {
   id           Int      @id @default(autoincrement())
-  internalCode String   @unique @map("internal_code")
+  accountId    String?  @map("account_id")
+  internalCode String   @map("internal_code")
   name         String
   categoryId   Int      @map("category_id")
   unitsPerPack Int      @map("units_per_pack")
@@ -32,23 +35,29 @@ model Product {
   batches   Batch[]
   saleItems SaleItem[]
 
+  @@unique([accountId, internalCode])
+  @@index([accountId])
   @@index([categoryId])
   @@map("products")
 }
 
 model Sale {
   id             Int      @id @default(autoincrement())
+  accountId      String?  @map("account_id")
+  operatorId     String?  @map("operator_id")
   idempotencyKey String?  @unique @map("idempotency_key")
   occurredAt     DateTime @default(now()) @map("occurred_at")
 
   items     SaleItem[]
   movements Movement[]
 
+  @@index([accountId])
   @@map("sales")
 }
 
 model SaleItem {
   id        Int     @id @default(autoincrement())
+  accountId String? @map("account_id")
   saleId    Int     @map("sale_id")
   productId Int     @map("product_id")
   quantity  Int
@@ -65,6 +74,8 @@ model SaleItem {
 
 model StockEntry {
   id             Int       @id @default(autoincrement())
+  accountId      String?   @map("account_id")
+  operatorId     String?   @map("operator_id")
   idempotencyKey String    @unique @map("idempotency_key")
   supplier       String?
   invoiceNumber  String?   @map("invoice_number")
@@ -77,19 +88,22 @@ model StockEntry {
 }
 
 model Barcode {
-  id           Int    @id @default(autoincrement())
-  productId    Int    @map("product_id")
-  code         String @unique
-  unitsPerScan Int    @map("units_per_scan")
+  id           Int     @id @default(autoincrement())
+  accountId    String? @map("account_id")
+  productId    Int     @map("product_id")
+  code         String
+  unitsPerScan Int     @map("units_per_scan")
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  @@unique([accountId, code])
   @@index([productId])
   @@map("product_barcodes")
 }
 
 model Batch {
   id            Int       @id @default(autoincrement())
+  accountId     String?   @map("account_id")
   productId     Int       @map("product_id")
   stockEntryId  Int?      @map("stock_entry_id")
   expiresAt     DateTime? @map("expires_at") @db.Date
@@ -117,6 +131,7 @@ enum MovementType {
 
 model Movement {
   id         Int          @id @default(autoincrement())
+  accountId  String?      @map("account_id")
   batchId    Int          @map("batch_id")
   saleId     Int?         @map("sale_id")
   type       MovementType

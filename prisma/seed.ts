@@ -5,6 +5,7 @@ import { PrismaClient, type MovementType } from "@prisma/client";
 
 const TODAY = new Date("2026-08-29T00:00:00Z");
 const DAY_IN_MS = 86_400_000;
+const DEMO_ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
 
 type CategorySeed = {
   name: string;
@@ -21,6 +22,7 @@ type ProductSeed = {
 };
 
 type MovementSeed = {
+  accountId: string;
   type: MovementType;
   quantity: number;
   occurredAt: Date;
@@ -148,9 +150,9 @@ function expiryFor(requiresExpiry: boolean) {
   return daysFromToday(random.between(91, 400));
 }
 
-function movementsFor(receivedUnits: number, receivedAt: Date) {
+function movementsFor(receivedUnits: number, receivedAt: Date, accountId: string) {
   const movements: MovementSeed[] = [
-    { type: "ENTRY", quantity: receivedUnits, occurredAt: receivedAt },
+    { accountId, type: "ENTRY", quantity: receivedUnits, occurredAt: receivedAt },
   ];
 
   let remaining = receivedUnits;
@@ -160,6 +162,7 @@ function movementsFor(receivedUnits: number, receivedAt: Date) {
     const quantity = Math.min(remaining - 1, random.between(1, 4));
     remaining -= quantity;
     movements.push({
+      accountId,
       type: "SALE",
       quantity: -quantity,
       occurredAt: daysFromToday(random.between(-20, 0)),
@@ -169,6 +172,7 @@ function movementsFor(receivedUnits: number, receivedAt: Date) {
   if (remaining > 2 && random.next() < 0.2) {
     remaining -= 1;
     movements.push({
+      accountId,
       type: "LOSS",
       quantity: -1,
       occurredAt: daysFromToday(random.between(-15, 0)),
@@ -178,6 +182,7 @@ function movementsFor(receivedUnits: number, receivedAt: Date) {
   if (remaining > 3 && random.next() < 0.15) {
     remaining -= 2;
     movements.push({
+      accountId,
       type: "ADJUSTMENT",
       quantity: -2,
       occurredAt: daysFromToday(random.between(-10, 0)),
@@ -187,7 +192,7 @@ function movementsFor(receivedUnits: number, receivedAt: Date) {
   return { movements, currentUnits: remaining };
 }
 
-function batchesFor(product: ProductSeed, requiresExpiry: boolean) {
+function batchesFor(product: ProductSeed, requiresExpiry: boolean, accountId: string) {
   const batchCount = random.between(1, 3);
 
   return Array.from({ length: batchCount }, () => {
@@ -195,9 +200,10 @@ function batchesFor(product: ProductSeed, requiresExpiry: boolean) {
     const receivedUnits = packs * product.unitsPerPack;
     const receivedAt = daysFromToday(-random.between(1, 60));
     const unitCost = Number(product.salePrice) * 0.62;
-    const { movements, currentUnits } = movementsFor(receivedUnits, receivedAt);
+    const { movements, currentUnits } = movementsFor(receivedUnits, receivedAt, accountId);
 
     return {
+      accountId,
       expiresAt: expiryFor(requiresExpiry),
       receivedUnits,
       currentUnits,
@@ -208,11 +214,12 @@ function batchesFor(product: ProductSeed, requiresExpiry: boolean) {
   });
 }
 
-function barcodesFor(product: ProductSeed, productIndex: number) {
+function barcodesFor(product: ProductSeed, productIndex: number, accountId: string) {
   const codes = [];
 
   if (product.unitBarcode) {
     codes.push({
+      accountId,
       code: barcodeFor(productIndex, false),
       unitsPerScan: 1,
     });
@@ -220,6 +227,7 @@ function barcodesFor(product: ProductSeed, productIndex: number) {
 
   if (product.packBarcode) {
     codes.push({
+      accountId,
       code: barcodeFor(productIndex, true),
       unitsPerScan: product.unitsPerPack,
     });
@@ -236,14 +244,14 @@ async function clearDatabase(prisma: PrismaClient) {
   `);
 }
 
-async function ensureCategories(prisma: PrismaClient) {
+async function ensureCategories(prisma: PrismaClient, accountId: string) {
   const ids = new Map<string, number>();
 
   for (const category of categories) {
     const saved = await prisma.category.upsert({
-      where: { name: category.name },
+      where: { accountId_name: { accountId, name: category.name } },
       update: { requiresExpiry: category.requiresExpiry },
-      create: category,
+      create: { ...category, accountId },
     });
 
     ids.set(saved.name, saved.id);
@@ -252,10 +260,10 @@ async function ensureCategories(prisma: PrismaClient) {
   return ids;
 }
 
-export async function seed(prisma: PrismaClient) {
+export async function seed(prisma: PrismaClient, accountId = DEMO_ACCOUNT_ID) {
   await clearDatabase(prisma);
 
-  const categoryIds = await ensureCategories(prisma);
+  const categoryIds = await ensureCategories(prisma, accountId);
 
   for (const [index, product] of products.entries()) {
     const categoryId = categoryIds.get(product.category);
@@ -270,13 +278,14 @@ export async function seed(prisma: PrismaClient) {
 
     await prisma.product.create({
       data: {
+        accountId,
         internalCode: `P${String(index + 1).padStart(4, "0")}`,
         name: product.name,
         categoryId,
         unitsPerPack: product.unitsPerPack,
         salePrice: product.salePrice,
-        barcodes: { create: barcodesFor(product, index) },
-        batches: { create: batchesFor(product, requiresExpiry) },
+        barcodes: { create: barcodesFor(product, index, accountId) },
+        batches: { create: batchesFor(product, requiresExpiry, accountId) },
       },
     });
   }
