@@ -18,13 +18,30 @@ export const INVALID_STOCK_ENTRY = {
   body: { error: "INVALID_STOCK_ENTRY" },
 };
 export const EXPIRY_REQUIRED = { status: 400, body: { error: "EXPIRY_REQUIRED" } };
+export const INVALID_OBSERVATION = {
+  status: 400,
+  body: { error: "INVALID_OBSERVATION" },
+};
+export const INVALID_OBSERVATION_ID = {
+  status: 400,
+  body: { error: "INVALID_OBSERVATION_ID" },
+};
+export const INVALID_BARCODE = { status: 400, body: { error: "INVALID_BARCODE" } };
 export const INVALID_JSON = { status: 400, body: { error: "INVALID_JSON" } };
 export const UNAUTHORIZED = { status: 401, body: { error: "UNAUTHORIZED" } };
 export const PRODUCT_NOT_FOUND = {
   status: 404,
   body: { error: "PRODUCT_NOT_FOUND" },
 };
+export const OBSERVATION_NOT_FOUND = {
+  status: 404,
+  body: { error: "OBSERVATION_NOT_FOUND" },
+};
 export const NOT_FOUND = { status: 404, body: { error: "NOT_FOUND" } };
+export const CODE_ALREADY_KNOWN = {
+  status: 409,
+  body: { error: "CODE_ALREADY_KNOWN" },
+};
 export const PAYLOAD_TOO_LARGE = {
   status: 413,
   body: { error: "PAYLOAD_TOO_LARGE" },

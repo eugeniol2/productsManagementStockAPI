@@ -2,6 +2,8 @@
 
 API para controle de estoque de uma mercearia de bairro, com rastreio por fardo: validade, custo de compra e saldo. Projeto real — a intenção é o dono usar.
 
+É a **API núcleo** de um sistema maior, desenhado como microsserviços: um serviço de auth à parte emite os tokens, e cada cliente — web de gestão e mobile de balcão — fala com o núcleo por um BFF próprio. Este repositório é o serviço de domínio; o desenho completo, e o que dele ainda não foi construído, está em [No horizonte](#no-horizonte).
+
 ## O problema
 
 Parece cadastro simples: produto, quantidade, pronto. Não é.
@@ -17,6 +19,7 @@ erDiagram
     categories ||--o{ products : classifica
     products ||--o{ product_barcodes : "é lido por"
     products ||--o{ batches : "recebido em"
+    products ||--o{ barcode_observations : "sugerido em"
     batches ||--|{ movements : registra
 
     categories {
@@ -55,7 +58,16 @@ erDiagram
         int quantity "negativo na saída"
         timestamp occurred_at
     }
+    barcode_observations {
+        int id PK
+        int suggested_product_id FK
+        text code
+        int occurrences
+        enum status "PENDING PROMOTED DISMISSED"
+    }
 ```
+
+Toda tabela de topo carrega ainda um `account_id`, omitido do diagrama para não poluí-lo — o que ele significa está em [Uma conta por loja](#a-arquitetura).
 
 A cardinalidade entre `batches` e `movements` é **um para um-ou-muitos**, não zero-ou-muitos: um fardo não existe sem a movimentação de entrada que o criou.
 
@@ -78,9 +90,11 @@ Duas colunas no produto atenderiam o caso mais comum e quebrariam nos outros tr�
 17894900011514   12 unidades     fardo
 ```
 
-Isso serve nos dois lados do balcão: na entrada, bipar o fardo já significa doze unidades; na venda, o cliente que leva o fardo fechado gera um bipe em vez de doze. O código é único no sistema inteiro — dois produtos com o mesmo número tornariam o bipe ambíguo, o que anularia a razão de existir do leitor.
+Isso serve nos dois lados do balcão: na entrada, bipar o fardo já significa doze unidades; na venda, o cliente que leva o fardo fechado gera um bipe em vez de doze. O código é único dentro da conta — dois produtos da mesma loja com o mesmo número tornariam o bipe ambíguo, o que anularia a razão de existir do leitor.
 
 O código interno continua no produto: é gerado pelo sistema, sempre existe e é sempre um só. Não é código de barras.
+
+**Código de barras desconhecido é aprendido, não criado na hora.** Quando o caixa bipa um número que não existe, ele resolve o produto na mão e a venda sai — o código não entra no catálogo ali. Vira uma *observação*, agregada por (código, produto) num contador. A reincidência é o que separa erro de leitura, que aparece uma vez e não volta, de embalagem nova, cujo código reincide a cada venda. O dono revisa a fila e decide: promove o código ao produto — informando quantas unidades ele vale, coisa que a venda não sabia — ou descarta. Um bipe nunca vira produto sozinho: um código carrega só um número, e criar catálogo a partir dele encheria a prateleira de fantasmas. Vender e catalogar são atos separados; o caixa alimenta o contador, o dono decide o catálogo.
 
 **Categoria é atributo do produto, definida uma vez no cadastro.** Lista plana, uma categoria por produto, em tabela e não em valor fixo no código — o dono precisa poder criar "Pet" sem depender de um deploy.
 
@@ -144,23 +158,33 @@ Por isso o alerta de vencimento **não é uma afirmação, é um gatilho** para 
 
 **Venda simultânea do último item não pode furar o estoque.** Duas vendas concorrentes que leiam o mesmo saldo e ambas concluam deixam o estoque negativo. A baixa acontece dentro de transação com bloqueio de linha.
 
+**Uma conta por loja, num banco só.** O sistema é multi-tenant: cada loja é uma conta, e toda tabela de topo carrega um `account_id`. O discriminador vem sempre do token autenticado, nunca do corpo ou da URL, e escopa cada consulta e cada escrita. Recurso de outra conta não dá `403`, dá `404` — do ponto de vista da loja, ele não existe. O que era único no sistema inteiro — nome de categoria, código interno, código de barras, chave de idempotência — passou a ser único por conta. Um banco físico por loja isolaria mais e custaria uma infraestrutura que uma mercearia não paga; o discriminador entrega o mesmo isolamento com uma coluna e a disciplina de nunca esquecer o filtro, que é o furo número um de multi-tenancy.
+
+**Toda rota exige um token assinado.** A autenticação é um JWT RS256: um serviço de auth separado assina com a chave privada; o núcleo verifica com a pública e lê dela o `accountId` e o operador. O núcleo verifica a assinatura, não compara segredo — e não guarda senha nem fala com o banco do auth. O algoritmo é fixado, para recusar um token que se diga `alg: none`. O serviço emissor ainda não existe; o núcleo já protege todas as rotas e confia no que o token afirma.
+
 ## Estado atual
 
 Node com TypeScript executado sem etapa de build, Express, Zod na validação de entrada, Prisma sobre PostgreSQL, Vitest nos testes.
 
+Toda rota exige um JWT no cabeçalho `Authorization: Bearer`.
+
 ```
-GET  /categories                categorias
-GET  /products                  catálogo
-GET  /products/:id              busca por id
-GET  /products/code/:code       código interno ou código de barras
-PUT  /products/:id/price        altera o preço de venda
-POST /stock-entries             entrada de mercadoria (nota com vários fardos)
-POST /sales                     registro de venda
+GET    /categories                 categorias
+GET    /products                   catálogo
+GET    /products/:id               busca por id
+GET    /products/code/:code        código interno ou código de barras
+PUT    /products/:id/price         altera o preço de venda
+POST   /stock-entries              entrada de mercadoria (nota com vários fardos)
+POST   /sales                      registro de venda
+POST   /products/:id/barcodes      vincula um código de barras ao produto
+GET    /barcode-observations       fila de códigos desconhecidos para revisão
+POST   /barcode-observations       registra um bipe desconhecido resolvido na mão
+DELETE /barcode-observations/:id   descarta uma observação
 ```
 
-O modelo descrito acima está implementado no Postgres: categorias, produtos com múltiplos códigos de barras, fardos com validade e custo, e o livro-razão de movimentações. A venda é transacional, com bloqueio de linha, baixa pelo fardo de validade mais próxima e chave de idempotência obrigatória.
+O modelo descrito acima está implementado no Postgres: categorias, produtos com múltiplos códigos de barras, fardos com validade e custo, e o livro-razão de movimentações. A venda é transacional, com bloqueio de linha, baixa pelo fardo de validade mais próxima e chave de idempotência obrigatória. O sistema é multi-tenant e autenticado: toda tabela de topo carrega o `account_id`, e toda rota verifica um JWT antes de tocar no banco. Códigos de barras desconhecidos entram por uma fila de observações que o dono promove ao catálogo.
 
-Log estruturado em JSON por requisição, tratador de erro centralizado, encerramento gracioso em `SIGTERM`, limites de tempo de conexão e de tamanho de corpo, e validação de entrada no limite do domínio — tetos numéricos e formato dos parâmetros, para que entrada malformada vire `400` e não chegue ao banco. Vinte e sete testes e verificação de tipos rodando antes de cada commit.
+Log estruturado em JSON por requisição, tratador de erro centralizado, encerramento gracioso em `SIGTERM`, limites de tempo de conexão e de tamanho de corpo, e validação de entrada no limite do domínio — tetos numéricos e formato dos parâmetros, para que entrada malformada vire `400` e não chegue ao banco. Vinte e sete testes puros e a verificação de tipos rodam antes de cada commit; vinte e um testes de integração cobrem o que toca o banco, num comando à parte.
 
 ## No horizonte
 
@@ -186,17 +210,17 @@ A solução é o cliente gerar um identificador único por venda e o servidor re
 
 A suíte pura cobre a decisão do FEFO e o formato dos corpos — os módulos que não tocam nada externo, e por isso rodam em milissegundos. Ela roda a cada commit.
 
-A suíte de integração já existe, num comando separado (`npm run test:integration`): roda contra um banco descartável (`stock_test`), que ela mesma provisiona e migra, e limpa entre os casos semeando de novo. Hoje cobre a entrada de mercadoria — a transação da nota, a idempotência e a atomicidade quando um item é recusado. Fica separada de propósito: o `npm test` do dia a dia continua rápido e sem depender de banco.
+A suíte de integração já existe, num comando separado (`npm run test:integration`): roda contra um banco descartável (`stock_test`), que ela mesma provisiona e migra, e limpa entre os casos semeando de novo. Hoje cobre a autenticação (token ausente, expirado, adulterado, assinado por outra chave, sem `accountId`), o isolamento entre contas (uma loja não enxerga nem escreve na outra, e o recurso da outra responde `404`), a entrada de mercadoria — a transação da nota, a idempotência e a atomicidade quando um item é recusado — e o aprendizado de códigos de barras. Fica separada de propósito: o `npm test` do dia a dia continua rápido e sem depender de banco.
 
-Falta cobrir o resto do que toca o banco: a venda, as consultas e as rotas com seus status. O caso mais importante é o **teste de concorrência** da venda. Um script descartável já provou o que nenhum outro prova: sem `SELECT ... FOR UPDATE`, quinze vendas simultâneas leem o mesmo saldo e todas descontam do mesmo fardo, que vai a −9 enquanto o fardo seguinte fica intocado. O saldo e o livro-razão continuam concordando, então nada denuncia o erro — o que quebra é a alocação por validade, em silêncio. Com o harness pronto, ele vira mais um caso.
+Falta cobrir o resto do que toca o banco: a venda e as consultas. O caso mais importante é o **teste de concorrência** da venda. Um script descartável já provou o que nenhum outro prova: sem `SELECT ... FOR UPDATE`, quinze vendas simultâneas leem o mesmo saldo e todas descontam do mesmo fardo, que vai a −9 enquanto o fardo seguinte fica intocado. O saldo e o livro-razão continuam concordando, então nada denuncia o erro — o que quebra é a alocação por validade, em silêncio. Com o harness pronto, ele vira mais um caso.
 
 ## Próximos passos
 
-- Testes de integração, começando pelo de concorrência
+- Teste de integração de concorrência da venda
 - Ajuste de inventário e alertas de vencimento e estoque baixo
 - Relatório de margem sobre custo médio ponderado
 - Frontend e BFF, definidos a partir das telas reais
-- Autenticação por operador, projetada já para dois serviços
+- Serviço emissor de tokens (auth) em PHP — o núcleo já verifica o JWT e escopa por conta
 - Alerta de vencimento por e-mail
 
 ## Convenções

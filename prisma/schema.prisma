@@ -30,10 +30,11 @@ model Product {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  category  Category   @relation(fields: [categoryId], references: [id])
-  barcodes  Barcode[]
-  batches   Batch[]
-  saleItems SaleItem[]
+  category     Category             @relation(fields: [categoryId], references: [id])
+  barcodes     Barcode[]
+  batches      Batch[]
+  saleItems    SaleItem[]
+  observations BarcodeObservation[]
 
   @@unique([accountId, internalCode])
   @@index([accountId])
@@ -145,4 +146,28 @@ model Movement {
   @@index([batchId])
   @@index([saleId])
   @@map("movements")
+}
+
+enum BarcodeObservationStatus {
+  PENDING
+  PROMOTED
+  DISMISSED
+}
+
+model BarcodeObservation {
+  id                 Int                      @id @default(autoincrement())
+  accountId          String                   @map("account_id")
+  code               String
+  suggestedProductId Int                      @map("suggested_product_id")
+  occurrences        Int                      @default(1)
+  status             BarcodeObservationStatus @default(PENDING)
+  operatorId         String?                  @map("operator_id")
+  firstSeenAt        DateTime                 @default(now()) @map("first_seen_at")
+  lastSeenAt         DateTime                 @default(now()) @map("last_seen_at")
+
+  product Product @relation(fields: [suggestedProductId], references: [id])
+
+  @@unique([accountId, code, suggestedProductId])
+  @@index([accountId, status])
+  @@map("barcode_observations")
 }

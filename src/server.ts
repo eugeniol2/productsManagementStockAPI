@@ -5,14 +5,19 @@ import express, { type Request, type Response } from "express";
 import { prisma } from "./database/prisma.ts";
 import { requireAuth } from "./http/auth.ts";
 import {
+  CODE_ALREADY_KNOWN,
   EXPIRY_REQUIRED,
+  INVALID_BARCODE,
   INVALID_CODE,
+  INVALID_OBSERVATION,
+  INVALID_OBSERVATION_ID,
   INVALID_PRICE,
   INVALID_PRODUCT_ID,
   INVALID_QUERY,
   INVALID_SALE,
   INVALID_STOCK_ENTRY,
   NOT_FOUND,
+  OBSERVATION_NOT_FOUND,
   PRODUCT_NOT_FOUND,
   fail,
 } from "./http/errors.ts";
@@ -25,6 +30,16 @@ import {
 } from "./http/limits.ts";
 import { isValidCode, parseId, rejectInvalid } from "./http/validation.ts";
 import { logRequest } from "./http/logRequest.ts";
+import { listPendingObservations } from "./stock/barcodes/barcodes.queries.ts";
+import {
+  barcodeSchema,
+  observationSchema,
+} from "./stock/barcodes/barcodes.schema.ts";
+import {
+  addBarcode,
+  dismissObservation,
+  recordBarcodeObservation,
+} from "./stock/barcodes/barcodes.service.ts";
 import { listCategories } from "./stock/categories/categories.queries.ts";
 import {
   findProductByCode,
@@ -183,6 +198,90 @@ app.post("/sales", async (req: Request, res: Response) => {
     throw error;
   }
 });
+
+app.post(
+  "/products/:id/barcodes",
+  async (req: Request<{ id: string }>, res: Response) => {
+    const id = parseId(req.params.id);
+
+    if (id === null) {
+      fail(res, INVALID_PRODUCT_ID);
+      return;
+    }
+
+    const body = barcodeSchema.safeParse(req.body);
+
+    if (!body.success) {
+      rejectInvalid(req, res, INVALID_BARCODE, body.error);
+      return;
+    }
+
+    const result = await addBarcode(
+      prisma,
+      res.locals.accountId,
+      id,
+      body.data.code,
+      body.data.unitsPerScan,
+    );
+
+    if (!result.ok) {
+      if (result.reason === "PRODUCT_NOT_FOUND") {
+        fail(res, PRODUCT_NOT_FOUND);
+        return;
+      }
+      res.status(409).json({ error: "CODE_TAKEN", productId: result.productId });
+      return;
+    }
+    res.status(result.created ? 201 : 200).json(result.barcode);
+  },
+);
+
+app.get("/barcode-observations", async (req: Request, res: Response) => {
+  res.json(await listPendingObservations(prisma, res.locals.accountId));
+});
+
+app.post("/barcode-observations", async (req: Request, res: Response) => {
+  const body = observationSchema.safeParse(req.body);
+
+  if (!body.success) {
+    rejectInvalid(req, res, INVALID_OBSERVATION, body.error);
+    return;
+  }
+
+  const result = await recordBarcodeObservation(
+    prisma,
+    res.locals.accountId,
+    res.locals.operatorId,
+    body.data.code,
+    body.data.productId,
+  );
+
+  if (!result.ok) {
+    fail(res, result.reason === "PRODUCT_NOT_FOUND" ? PRODUCT_NOT_FOUND : CODE_ALREADY_KNOWN);
+    return;
+  }
+  res.status(201).json(result.observation);
+});
+
+app.delete(
+  "/barcode-observations/:id",
+  async (req: Request<{ id: string }>, res: Response) => {
+    const id = parseId(req.params.id);
+
+    if (id === null) {
+      fail(res, INVALID_OBSERVATION_ID);
+      return;
+    }
+
+    const dismissed = await dismissObservation(prisma, res.locals.accountId, id);
+
+    if (!dismissed) {
+      fail(res, OBSERVATION_NOT_FOUND);
+      return;
+    }
+    res.status(204).end();
+  },
+);
 
 app.use((req: Request, res: Response) => {
   fail(res, NOT_FOUND);
